@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Transparent background — fly mark only, white on transparent -->
+  <!-- Eyes use #0A7E4A so they vanish against the green widget background -->
+
+  <!-- Antennae -->
+  <line x1="247" y1="136" x2="216" y2="100" stroke="white" stroke-width="5" stroke-linecap="round"/>
+  <line x1="265" y1="136" x2="296" y2="100" stroke="white" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="216" cy="100" r="6" fill="white"/>
+  <circle cx="296" cy="100" r="6" fill="white"/>
+
+  <!-- Left wing -->
+  <ellipse cx="164" cy="248" rx="124" ry="62"
+    fill="white" fill-opacity="0.84"
+    transform="rotate(-20 164 248)"/>
+
+  <!-- Right wing -->
+  <ellipse cx="348" cy="248" rx="124" ry="62"
+    fill="white" fill-opacity="0.84"
+    transform="rotate(20 348 248)"/>
+
+  <!-- Subtle wing veins -->
+  <path d="M 244,218 Q 198,196 138,172"
+    stroke="#0A7E4A" stroke-width="2.5" fill="none"
+    stroke-linecap="round" opacity="0.28"/>
+  <path d="M 268,218 Q 314,196 374,172"
+    stroke="#0A7E4A" stroke-width="2.5" fill="none"
+    stroke-linecap="round" opacity="0.28"/>
+
+  <!-- Body -->
+  <ellipse cx="256" cy="296" rx="43" ry="74" fill="white"/>
+  <ellipse cx="256" cy="214" rx="34" ry="36" fill="white"/>
+  <ellipse cx="256" cy="158" rx="25" ry="25" fill="white"/>
+
+  <!-- Eyes (blend with green widget background) -->
+  <circle cx="245" cy="155" r="8.5" fill="#0A7E4A"/>
+  <circle cx="267" cy="155" r="8.5" fill="#0A7E4A"/>
+</svg>

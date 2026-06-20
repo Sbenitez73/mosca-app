@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200">
+  <!-- ── Icon mark (circle background) ─────────────────────────────────────── -->
+  <circle cx="100" cy="100" r="92" fill="#0A7E4A"/>
+
+  <!-- Antennae -->
+  <line x1="96"  y1="54" x2="82"  y2="36" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="104" y1="54" x2="118" y2="36" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="82"  cy="36" r="2.5" fill="white"/>
+  <circle cx="118" cy="36" r="2.5" fill="white"/>
+
+  <!-- Left wing -->
+  <ellipse cx="64"  cy="97" rx="48" ry="24"
+    fill="white" fill-opacity="0.84"
+    transform="rotate(-20 64 97)"/>
+
+  <!-- Right wing -->
+  <ellipse cx="136" cy="97" rx="48" ry="24"
+    fill="white" fill-opacity="0.84"
+    transform="rotate(20 136 97)"/>
+
+  <!-- Wing veins -->
+  <path d="M 95,84 Q 77,76 53,67"
+    stroke="#0A7E4A" stroke-width="1" fill="none"
+    stroke-linecap="round" opacity="0.28"/>
+  <path d="M 105,84 Q 123,76 147,67"
+    stroke="#0A7E4A" stroke-width="1" fill="none"
+    stroke-linecap="round" opacity="0.28"/>
+
+  <!-- Body -->
+  <ellipse cx="100" cy="116" rx="17" ry="29" fill="white"/>
+  <ellipse cx="100" cy="84"  rx="13" ry="14" fill="white"/>
+  <ellipse cx="100" cy="62"  rx="10" ry="10" fill="white"/>
+
+  <!-- Eyes -->
+  <circle cx="96"  cy="61" r="3.3" fill="#0A7E4A"/>
+  <circle cx="104" cy="61" r="3.3" fill="#0A7E4A"/>
+
+  <!-- ── Wordmark ─────────────────────────────────────────────────────────── -->
+  <!-- "Mosca" — DM Sans Bold, rendered with geometric sans fallback -->
+  <text
+    x="216" y="120"
+    font-family="'DM Sans', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="700"
+    font-size="88"
+    letter-spacing="-2"
+    fill="#0A7E4A">Mosca</text>
+
+  <!-- Tagline — ultra-light, small -->
+  <text
+    x="218" y="148"
+    font-family="'DM Sans', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="300"
+    font-size="18"
+    letter-spacing="4"
+    fill="#0A7E4A"
+    opacity="0.65">REGISTRA TUS GASTOS</text>
+</svg>

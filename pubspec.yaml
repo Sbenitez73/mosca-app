@@ -1,0 +1,61 @@
+name: mosca
+description: Smart expense tracker for Latin America.
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # HTTP
+  dio: ^5.8.0+1
+
+  # Local database
+  sqflite: ^2.4.2
+  path_provider: ^2.1.5
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Google auth + Gmail API
+  google_sign_in: ^6.3.0
+
+  # iOS Live Activities / Dynamic Island
+  live_activities: ^2.4.9
+
+  # Notifications
+  flutter_local_notifications: ^18.0.1
+
+  # Background sync
+  workmanager: ^0.5.2
+
+  # Android floating overlay (Dynamic Island equivalent)
+  flutter_overlay_window: ^0.4.2
+
+  # UI + fonts
+  google_fonts: ^6.2.1
+  intl: ^0.20.2
+
+  # Charts (stats screen)
+  fl_chart: ^0.70.2
+
+  # Utils
+  equatable: ^2.0.7
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.14
+
+flutter:
+  uses-material-design: true

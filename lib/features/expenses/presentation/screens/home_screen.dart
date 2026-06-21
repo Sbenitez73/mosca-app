@@ -1,15 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/expenses_provider.dart';
 import '../widgets/expense_card.dart';
 import '../widgets/month_summary_card.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FlutterNativeSplash.remove();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final expensesAsync = ref.watch(currentMonthExpensesProvider);
     final theme = Theme.of(context);
 
@@ -83,7 +97,7 @@ class HomeScreen extends ConsumerWidget {
                 final recent = expenses.take(10).toList();
                 return SliverList.separated(
                   itemCount: recent.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
+                  separatorBuilder: (context2, i2) => const Divider(height: 1, indent: 68),
                   itemBuilder: (context, i) => ExpenseCard(
                     expense: recent[i],
                     onTap: () => context.push('/expenses/edit', extra: recent[i]),

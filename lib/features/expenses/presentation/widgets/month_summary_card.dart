@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../data/models/expense_category.dart';
 import '../providers/expenses_provider.dart';
 
 class MonthSummaryCard extends ConsumerWidget {
@@ -10,25 +10,28 @@ class MonthSummaryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final total = ref.watch(monthlyTotalProvider);
+    final expenses = ref.watch(monthlyTotalProvider);
+    final income = ref.watch(monthlyIncomeProvider);
+    final balance = ref.watch(monthlyBalanceProvider);
     final expensesAsync = ref.watch(currentMonthExpensesProvider);
     final theme = Theme.of(context);
     final now = DateTime.now();
 
     final count = expensesAsync.maybeWhen(data: (e) => e.length, orElse: () => 0);
+    final balancePositive = balance >= 0;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [AppColors.primary, Color(0xFF0F5E38)],
+          colors: [Color(0xFF0A7E4A), Color(0xFF0F5E38)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.35),
+            color: const Color(0xFF0A7E4A).withValues(alpha: 0.35),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -39,6 +42,7 @@ class MonthSummaryCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header ─────────────────────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -62,25 +66,134 @@ class MonthSummaryCard extends ConsumerWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              CurrencyFormatter.format(total),
-              style: const TextStyle(
-                fontSize: 38,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                height: 1,
-              ),
+            const SizedBox(height: 16),
+
+            // ── Income / Expense row ────────────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: _StatColumn(
+                    label: 'Gastos',
+                    amount: expenses,
+                    icon: Icons.arrow_downward_rounded,
+                    iconColor: const Color(0xFFFF6B6B),
+                  ),
+                ),
+                Container(width: 1, height: 40, color: Colors.white24),
+                Expanded(
+                  child: _StatColumn(
+                    label: 'Ingresos',
+                    amount: income,
+                    icon: Icons.arrow_upward_rounded,
+                    iconColor: const Color(0xFF69F0AE),
+                    alignRight: true,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'gastados este mes',
-              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white60),
+
+            const SizedBox(height: 16),
+            Container(height: 1, color: Colors.white24),
+            const SizedBox(height: 14),
+
+            // ── Balance ────────────────────────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Balance',
+                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
+                ),
+                Row(
+                  children: [
+                    Icon(
+                      balancePositive
+                          ? Icons.trending_up_rounded
+                          : Icons.trending_down_rounded,
+                      size: 16,
+                      color: balancePositive
+                          ? const Color(0xFF69F0AE)
+                          : const Color(0xFFFF6B6B),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${balancePositive ? '+' : ''}${CurrencyFormatter.format(balance)}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: balancePositive
+                            ? const Color(0xFF69F0AE)
+                            : const Color(0xFFFF6B6B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 16),
             _CategoryBreakdown(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StatColumn extends StatelessWidget {
+  final String label;
+  final double amount;
+  final IconData icon;
+  final Color iconColor;
+  final bool alignRight;
+
+  const _StatColumn({
+    required this.label,
+    required this.amount,
+    required this.icon,
+    required this.iconColor,
+    this.alignRight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final align = alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final padding = alignRight
+        ? const EdgeInsets.only(left: 16)
+        : const EdgeInsets.only(right: 16);
+
+    return Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: align,
+        children: [
+          Row(
+            mainAxisAlignment:
+                alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!alignRight) ...[
+                Icon(icon, size: 12, color: iconColor),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(color: Colors.white60),
+              ),
+              if (alignRight) ...[
+                const SizedBox(width: 4),
+                Icon(icon, size: 12, color: iconColor),
+              ],
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            CurrencyFormatter.format(amount),
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -99,7 +212,6 @@ class _CategoryBreakdown extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Progress bar — top category fills it
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: SizedBox(
@@ -109,7 +221,9 @@ class _CategoryBreakdown extends ConsumerWidget {
                 final fraction = e.value / total;
                 return Flexible(
                   flex: (fraction * 100).round(),
-                  child: Container(color: _colorFor(e.key)),
+                  child: Container(
+                    color: ExpenseCategory.fromKey(e.key).color,
+                  ),
                 );
               }).toList(),
             ),
@@ -118,6 +232,7 @@ class _CategoryBreakdown extends ConsumerWidget {
         const SizedBox(height: 12),
         Row(
           children: top3.map((e) {
+            final cat = ExpenseCategory.fromKey(e.key);
             final fraction = (e.value / total * 100).round();
             return Expanded(
               child: Column(
@@ -129,13 +244,13 @@ class _CategoryBreakdown extends ConsumerWidget {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: _colorFor(e.key),
+                          color: cat.color,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _labelFor(e.key),
+                        cat.label,
                         style: const TextStyle(fontSize: 11, color: Colors.white70),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -156,31 +271,5 @@ class _CategoryBreakdown extends ConsumerWidget {
         ),
       ],
     );
-  }
-
-  Color _colorFor(String categoryName) {
-    switch (categoryName) {
-      case 'food': return AppColors.catFood;
-      case 'transport': return AppColors.catTransport;
-      case 'entertainment': return AppColors.catEntertainment;
-      case 'shopping': return AppColors.catShopping;
-      case 'health': return AppColors.catHealth;
-      case 'housing': return AppColors.catHousing;
-      case 'education': return AppColors.catEducation;
-      default: return AppColors.catOther;
-    }
-  }
-
-  String _labelFor(String categoryName) {
-    switch (categoryName) {
-      case 'food': return 'Comida';
-      case 'transport': return 'Transporte';
-      case 'entertainment': return 'Entret.';
-      case 'shopping': return 'Compras';
-      case 'health': return 'Salud';
-      case 'housing': return 'Vivienda';
-      case 'education': return 'Educac.';
-      default: return 'Otro';
-    }
   }
 }

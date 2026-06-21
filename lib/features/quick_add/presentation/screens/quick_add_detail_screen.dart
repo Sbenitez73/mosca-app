@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/utils/date_formatter.dart';
 import '../providers/quick_add_provider.dart';
 import 'live_activity_service.dart';
 
@@ -107,7 +108,15 @@ class _QuickAddDetailScreenState extends ConsumerState<QuickAddDetailScreen> {
             ),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 16),
+
+          // ── Date ─────────────────────────────────────────────────────────
+          _DateRow(
+            date: state.date,
+            onChanged: ref.read(quickAddProvider.notifier).setDate,
+          ),
+
+          const SizedBox(height: 24),
 
           // ── Title ────────────────────────────────────────────────────────
           Text(
@@ -169,5 +178,75 @@ class _QuickAddDetailScreenState extends ConsumerState<QuickAddDetailScreen> {
     await LiveActivityService.end();
     final success = await ref.read(quickAddProvider.notifier).save();
     if (success && mounted) context.go('/');
+  }
+}
+
+// ─── Date picker row ──────────────────────────────────────────────────────────
+
+class _DateRow extends StatelessWidget {
+  final DateTime date;
+  final ValueChanged<DateTime> onChanged;
+
+  const _DateRow({required this.date, required this.onChanged});
+
+  bool get _isToday {
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month && date.day == now.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Icon(Icons.calendar_today_rounded,
+            size: 18, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _pick(context),
+            child: Text(
+              DateFormatter.dayMonthYear(date),
+              style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+        if (!_isToday)
+          TextButton(
+            onPressed: () => onChanged(DateTime.now()),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Hoy',
+              style: TextStyle(
+                  color: colorScheme.primary, fontWeight: FontWeight.w700),
+            ),
+          ),
+        IconButton(
+          icon: const Icon(Icons.edit_calendar_rounded),
+          iconSize: 20,
+          color: colorScheme.primary,
+          onPressed: () => _pick(context),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      onChanged(DateTime(picked.year, picked.month, picked.day,
+          date.hour, date.minute, date.second));
+    }
   }
 }

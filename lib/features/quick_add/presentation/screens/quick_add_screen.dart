@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../expenses/data/models/expense_category.dart';
+import '../../../expenses/data/models/transaction_type.dart';
+import '../../../expenses/presentation/providers/expenses_provider.dart';
 import '../providers/quick_add_provider.dart';
 import 'live_activity_service.dart';
 
@@ -40,7 +42,10 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.pop(),
         ),
-        title: const Text('Nuevo gasto'),
+        title: _TypeToggle(
+          selected: state.type,
+          onChanged: (t) => ref.read(quickAddProvider.notifier).setType(t),
+        ),
         actions: [
           if (state.isValid)
             Padding(
@@ -129,7 +134,10 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: ExpenseCategory.values.map((cat) {
+              children: (state.type == TransactionType.income
+                      ? ExpenseCategory.incomeBuiltins
+                      : ref.watch(allCategoriesProvider))
+                  .map((cat) {
                 final selected = state.category == cat;
                 return GestureDetector(
                   onTap: () {
@@ -224,6 +232,63 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
       case ExpenseCategory.education: return '📚';
       default: return '💸';
     }
+  }
+}
+
+// ─── Type toggle ─────────────────────────────────────────────────────────────
+
+class _TypeToggle extends StatelessWidget {
+  final TransactionType selected;
+  final ValueChanged<TransactionType> onChanged;
+
+  const _TypeToggle({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: colorScheme.onSurface.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: TransactionType.values.map((type) {
+          final isSelected = type == selected;
+          final color = type == TransactionType.income
+              ? const Color(0xFF4CAF50)
+              : colorScheme.error;
+          return GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onChanged(type);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              height: 34,
+              decoration: BoxDecoration(
+                color: isSelected ? color : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Center(
+                child: Text(
+                  type.label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected
+                        ? Colors.white
+                        : colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 }
 

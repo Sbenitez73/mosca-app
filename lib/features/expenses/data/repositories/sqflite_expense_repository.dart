@@ -2,12 +2,11 @@ import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import '../../../../core/db/database_service.dart';
 import '../models/expense.dart';
+import '../models/transaction_type.dart';
 import 'expense_repository.dart';
 
 class SqfliteExpenseRepository implements ExpenseRepository {
   final DatabaseService _dbService;
-
-  // Single broadcast controller — all streams fan off this
   final _changeController = StreamController<void>.broadcast();
 
   SqfliteExpenseRepository(this._dbService);
@@ -22,14 +21,16 @@ class SqfliteExpenseRepository implements ExpenseRepository {
       );
 
   @override
-  Stream<List<Expense>> watchMonth(int year, int month) {
+  Stream<List<Expense>> watchMonth(int year, int month, {TransactionType? type}) {
     final start = DateTime(year, month).millisecondsSinceEpoch;
     final end = DateTime(year, month + 1).millisecondsSinceEpoch - 1;
     return _watchQuery(
       () => _db.query(
         'expenses',
-        where: 'date BETWEEN ? AND ?',
-        whereArgs: [start, end],
+        where: type != null
+            ? 'date BETWEEN ? AND ? AND type = ?'
+            : 'date BETWEEN ? AND ?',
+        whereArgs: type != null ? [start, end, type.name] : [start, end],
         orderBy: 'date DESC',
       ),
     );
@@ -72,19 +73,20 @@ class SqfliteExpenseRepository implements ExpenseRepository {
   }
 
   @override
-  Future<List<Expense>> getForStats(int year) async {
+  Future<List<Expense>> getForStats(int year, {TransactionType? type}) async {
     final start = DateTime(year).millisecondsSinceEpoch;
     final end = DateTime(year + 1).millisecondsSinceEpoch - 1;
     final rows = await _db.query(
       'expenses',
-      where: 'date BETWEEN ? AND ?',
-      whereArgs: [start, end],
+      where: type != null
+          ? 'date BETWEEN ? AND ? AND type = ?'
+          : 'date BETWEEN ? AND ?',
+      whereArgs: type != null ? [start, end, type.name] : [start, end],
       orderBy: 'date DESC',
     );
     return rows.map(Expense.fromMap).toList();
   }
 
-  // Helper: emits immediately then re-emits after every _notifyChange call
   Stream<List<Expense>> _watchQuery(
     Future<List<Map<String, dynamic>>> Function() query,
   ) async* {

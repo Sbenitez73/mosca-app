@@ -37,7 +37,7 @@ class GmailParser {
     final result  = _parseAmount(content, bank);
     if (result == null) return null;
 
-    return ParsedTransaction(
+    final transaction = ParsedTransaction(
       amount: result.amount,
       currency: result.currency,
       merchant: _parseMerchant(content, bank),
@@ -46,6 +46,8 @@ class GmailParser {
       date: _parseEmailDate(dateStr),
       gmailMessageId: messageId,
     );
+
+    return transaction;
   }
 
   // ─── Bank detection ──────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ class GmailParser {
   // without having to enumerate every possible reject keyword.
   static const _transactionKeywords = [
     // Purchase confirmations
+    'compraste',
     'realizaste una compra',
     'realizaste un pago',
     'compra realizada',
@@ -148,11 +151,30 @@ class GmailParser {
   }
 
   static double? _normalizeAmount(String raw, String bank) {
-    // All LatAm banks use European notation: '.' = thousands, ',' = decimal.
-    // $2.700.000,00 → 2700000.00  |  $2.700.000 → 2700000  |  R$1.234,56 → 1234.56
-    if (raw.contains(',')) {
-      return double.tryParse(raw.replaceAll('.', '').replaceAll(',', '.'));
+    final hasDot   = raw.contains('.');
+    final hasComma = raw.contains(',');
+
+    if (hasDot && hasComma) {
+      // Whichever separator comes last is the decimal separator.
+      // "184,000.00" → last is '.' → American → remove commas
+      // "568.158,00" → last is ',' → European → remove dots, swap comma
+      if (raw.lastIndexOf('.') > raw.lastIndexOf(',')) {
+        return double.tryParse(raw.replaceAll(',', ''));
+      } else {
+        return double.tryParse(raw.replaceAll('.', '').replaceAll(',', '.'));
+      }
     }
+
+    if (hasComma) {
+      // Only comma: thousands if exactly 3 digits follow ("25,000"), else decimal ("1,50")
+      final afterComma = raw.substring(raw.lastIndexOf(',') + 1);
+      if (afterComma.length == 3) {
+        return double.tryParse(raw.replaceAll(',', ''));
+      }
+      return double.tryParse(raw.replaceAll(',', '.'));
+    }
+
+    // Only dot (or neither): always thousands separator in LatAm ("25.000" → 25000)
     return double.tryParse(raw.replaceAll('.', ''));
   }
 
@@ -194,17 +216,36 @@ class GmailParser {
     try {
       final payload = data['payload'] as Map?;
       if (payload == null) return '';
-      final parts = List<Map<String, dynamic>>.from(payload['parts'] as List? ?? []);
-      for (final part in parts) {
-        if (part['mimeType'] == 'text/plain') {
-          final encoded = (part['body'] as Map?)?['data'] as String?;
-          if (encoded != null) return _decodeBase64(encoded);
-        }
-      }
-      final encoded = (payload['body'] as Map?)?['data'] as String?;
-      if (encoded != null) return _decodeBase64(encoded);
+      return _extractPlainText(payload) ?? '';
     } catch (_) {}
     return '';
+  }
+
+  // Recursively searches nested multipart structure for a text/plain part.
+  // Handles: multipart/mixed > multipart/alternative > text/plain, etc.
+  static String? _extractPlainText(Map<dynamic, dynamic> part) {
+    final mimeType = part['mimeType'] as String? ?? '';
+
+    if (mimeType == 'text/plain') {
+      final encoded = (part['body'] as Map?)?['data'] as String?;
+      if (encoded != null && encoded.isNotEmpty) return _decodeBase64(encoded);
+    }
+
+    final parts = part['parts'] as List?;
+    if (parts != null) {
+      for (final p in parts) {
+        final result = _extractPlainText(Map<dynamic, dynamic>.from(p as Map));
+        if (result != null && result.isNotEmpty) return result;
+      }
+    }
+
+    // Fallback: single-part email with body directly in payload
+    if (!mimeType.startsWith('multipart/')) {
+      final encoded = (part['body'] as Map?)?['data'] as String?;
+      if (encoded != null && encoded.isNotEmpty) return _decodeBase64(encoded);
+    }
+
+    return null;
   }
 
   static String _decodeBase64(String encoded) {
@@ -212,13 +253,40 @@ class GmailParser {
     return utf8.decode(base64.decode(base64.normalize(normalized)));
   }
 
+  static const _monthMap = {
+    'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+    'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+    'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12',
+  };
+
   static DateTime _parseEmailDate(String dateStr) {
     try {
-      final cleaned = dateStr.replaceAll(RegExp(r'\s\([A-Z]+\)$'), '');
-      return DateTime.parse(cleaned);
-    } catch (_) {
-      return DateTime.now();
-    }
+      return DateTime.parse(dateStr.trim());
+    } catch (_) {}
+
+    try {
+      // RFC 2822: "Mon, 19 Jun 2026 12:38:00 +0500 (COT)"
+      var s = dateStr
+          .replaceAll(RegExp(r'\s*\([A-Za-z]+\)\s*$'), '') // strip "(COT)"
+          .replaceAll(RegExp(r'^[A-Za-z]{3},\s*'), '')     // strip "Mon, "
+          .trim();
+      _monthMap.forEach((name, n) => s = s.replaceFirst(name, n));
+      // s is now "19 06 2026 12:38:00 +0500"
+      final parts = s.split(RegExp(r'\s+'));
+      if (parts.length >= 4) {
+        final day   = parts[0].padLeft(2, '0');
+        final month = parts[1];
+        final year  = parts[2];
+        final time  = parts[3];
+        final tzRaw = parts.length >= 5 ? parts[4] : '+00:00';
+        final tz    = tzRaw.length == 5
+            ? '${tzRaw.substring(0, 3)}:${tzRaw.substring(3)}'
+            : tzRaw;
+        return DateTime.parse('$year-$month-${day}T$time$tz').toLocal();
+      }
+    } catch (_) {}
+
+    return DateTime.now();
   }
 
   static String _toTitleCase(String input) {

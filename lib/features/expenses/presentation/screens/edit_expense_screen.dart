@@ -240,7 +240,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
             height: 44,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              children: ExpenseCategory.values.map((cat) {
+              children: ref.watch(allCategoriesProvider).map((cat) {
                 final selected = _category == cat;
                 return GestureDetector(
                   onTap: () {

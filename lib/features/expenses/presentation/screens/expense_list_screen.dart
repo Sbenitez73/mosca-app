@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../data/models/expense.dart';
 import '../providers/expenses_provider.dart';
 import '../widgets/expense_card.dart';
 
@@ -19,7 +21,15 @@ class ExpenseListScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.search_rounded),
-            onPressed: () {},
+            onPressed: () async {
+              ref.read(searchActiveProvider.notifier).state = true;
+              final expenses = expensesAsync.valueOrNull ?? [];
+              await showSearch(
+                context: context,
+                delegate: _ExpenseSearchDelegate(expenses: expenses, ref: ref),
+              );
+              ref.read(searchActiveProvider.notifier).state = false;
+            },
           ),
         ],
       ),
@@ -31,11 +41,10 @@ class ExpenseListScreen extends ConsumerWidget {
             return const Center(child: Text('Sin gastos registrados'));
           }
 
-          // Group by day
-          final grouped = <String, List<_Indexed>>{};
-          for (int i = 0; i < expenses.length; i++) {
-            final key = DateFormatter.fullDate(expenses[i].date);
-            (grouped[key] ??= []).add(_Indexed(i, expenses[i]));
+          final grouped = <String, List<Expense>>{};
+          for (final e in expenses) {
+            final key = DateFormatter.fullDate(e.date);
+            (grouped[key] ??= []).add(e);
           }
 
           final days = grouped.keys.toList();
@@ -46,10 +55,7 @@ class ExpenseListScreen extends ConsumerWidget {
             itemBuilder: (context, di) {
               final day = days[di];
               final dayExpenses = grouped[day]!;
-              final dayTotal = dayExpenses.fold(
-                0.0,
-                (sum, e) => sum + e.expense.amount,
-              );
+              final dayTotal = dayExpenses.fold(0.0, (sum, e) => sum + e.amount);
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,10 +72,7 @@ class ExpenseListScreen extends ConsumerWidget {
                           ),
                         ),
                         Text(
-                          '\$${dayTotal.toStringAsFixed(0).replaceAllMapped(
-                                RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-                                (m) => '${m[1]},',
-                              )}',
+                          CurrencyFormatter.format(dayTotal),
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                           ),
@@ -82,11 +85,11 @@ class ExpenseListScreen extends ConsumerWidget {
                     child: Column(
                       children: dayExpenses.asMap().entries.map((entry) {
                         final idx = entry.key;
-                        final item = entry.value;
+                        final expense = entry.value;
                         return Dismissible(
-                          key: ValueKey(item.expense.id ?? item.expense.gmailMessageId),
+                          key: ValueKey(expense.id ?? expense.gmailMessageId),
                           direction: DismissDirection.endToStart,
-                          confirmDismiss: (_) => _confirmDelete(context, ref, item.expense.id),
+                          confirmDismiss: (_) => _confirmDelete(context, ref, expense.id),
                           background: Container(
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 20),
@@ -99,8 +102,8 @@ class ExpenseListScreen extends ConsumerWidget {
                           child: Column(
                             children: [
                               ExpenseCard(
-                                expense: item.expense,
-                                onTap: () => context.push('/expenses/edit', extra: item.expense),
+                                expense: expense,
+                                onTap: () => context.push('/expenses/edit', extra: expense),
                               ),
                               if (idx < dayExpenses.length - 1)
                                 const Divider(height: 1, indent: 68),
@@ -127,7 +130,10 @@ class ExpenseListScreen extends ConsumerWidget {
         title: const Text('Eliminar gasto'),
         content: const Text('¿Seguro que quieres eliminar este gasto?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
@@ -146,8 +152,88 @@ class ExpenseListScreen extends ConsumerWidget {
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 }
 
-class _Indexed {
-  final int index;
-  final dynamic expense;
-  _Indexed(this.index, this.expense);
+// ─── Search delegate ──────────────────────────────────────────────────────────
+
+class _ExpenseSearchDelegate extends SearchDelegate<void> {
+  final List<Expense> expenses;
+  final WidgetRef ref;
+
+  _ExpenseSearchDelegate({required this.expenses, required this.ref});
+
+  @override
+  String get searchFieldLabel => 'Buscar gastos...';
+
+  List<Expense> _filter(String query) {
+    if (query.trim().isEmpty) return [];
+    final q = query.toLowerCase().trim();
+    return expenses.where((e) {
+      return e.description.toLowerCase().contains(q) ||
+          (e.merchantName?.toLowerCase().contains(q) ?? false) ||
+          e.category.label.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  List<Widget> buildActions(BuildContext context) => [
+        if (query.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.clear_rounded),
+            onPressed: () => query = '',
+          ),
+      ];
+
+  @override
+  Widget buildLeading(BuildContext context) => IconButton(
+        icon: const Icon(Icons.arrow_back_rounded),
+        onPressed: () => close(context, null),
+      );
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildResults(context);
+
+  @override
+  Widget buildResults(BuildContext context) => _buildResults(context);
+
+  Widget _buildResults(BuildContext context) {
+    final results = _filter(query);
+    final theme = Theme.of(context);
+
+    if (query.trim().isEmpty) {
+      return Center(
+        child: Text(
+          'Escribe para buscar',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+          ),
+        ),
+      );
+    }
+
+    if (results.isEmpty) {
+      return Center(
+        child: Text(
+          'Sin resultados para "$query"',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 100),
+      itemCount: results.length,
+      separatorBuilder: (context2, i2) => const Divider(height: 1, indent: 68),
+      itemBuilder: (context, i) {
+        final expense = results[i];
+        return ExpenseCard(
+          expense: expense,
+          onTap: () {
+            close(context, null);
+            context.push('/expenses/edit', extra: expense);
+          },
+        );
+      },
+    );
+  }
 }

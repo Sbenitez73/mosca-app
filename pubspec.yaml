@@ -46,6 +46,9 @@ dependencies:
   # Charts (stats screen)
   fl_chart: ^0.70.2
 
+  # Splash screen
+  flutter_native_splash: ^2.4.3
+
   # Utils
   equatable: ^2.0.7
 
@@ -59,3 +62,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+flutter_native_splash:
+  color: "#0A7E4A"
+  color_dark: "#0A7E4A"
+  image: assets/splash/splash_icon.png
+  image_dark: assets/splash/splash_icon.png
+  ios: true
+  android: true

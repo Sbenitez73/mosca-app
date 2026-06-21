@@ -1,8 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/db/database_service.dart';
 import '../../data/models/expense.dart';
+import '../../data/models/expense_category.dart';
+import '../../data/models/transaction_type.dart';
+import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/expense_repository.dart';
+import '../../data/repositories/sqflite_category_repository.dart';
 import '../../data/repositories/sqflite_expense_repository.dart';
+
+final searchActiveProvider = StateProvider<bool>((ref) => false);
 
 // Overridden in main() after DatabaseService is initialized
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
@@ -13,20 +19,50 @@ final expenseRepositoryProvider = Provider<ExpenseRepository>((ref) {
   return SqfliteExpenseRepository(ref.watch(databaseServiceProvider));
 });
 
+// ─── Expenses (current month) ─────────────────────────────────────────────────
+
 final currentMonthExpensesProvider = StreamProvider<List<Expense>>((ref) {
   final now = DateTime.now();
-  return ref.watch(expenseRepositoryProvider).watchMonth(now.year, now.month);
+  return ref.watch(expenseRepositoryProvider).watchMonth(
+        now.year, now.month,
+        type: TransactionType.expense,
+      );
 });
+
+// ─── Incomes (current month) ──────────────────────────────────────────────────
+
+final currentMonthIncomesProvider = StreamProvider<List<Expense>>((ref) {
+  final now = DateTime.now();
+  return ref.watch(expenseRepositoryProvider).watchMonth(
+        now.year, now.month,
+        type: TransactionType.income,
+      );
+});
+
+// ─── All transactions (both types, all history) ───────────────────────────────
 
 final allExpensesProvider = StreamProvider<List<Expense>>((ref) {
   return ref.watch(expenseRepositoryProvider).watchAll();
 });
+
+// ─── Totals ───────────────────────────────────────────────────────────────────
 
 final monthlyTotalProvider = Provider<double>((ref) {
   return ref.watch(currentMonthExpensesProvider).maybeWhen(
         data: (expenses) => expenses.fold(0.0, (sum, e) => sum + e.amount),
         orElse: () => 0.0,
       );
+});
+
+final monthlyIncomeProvider = Provider<double>((ref) {
+  return ref.watch(currentMonthIncomesProvider).maybeWhen(
+        data: (incomes) => incomes.fold(0.0, (sum, e) => sum + e.amount),
+        orElse: () => 0.0,
+      );
+});
+
+final monthlyBalanceProvider = Provider<double>((ref) {
+  return ref.watch(monthlyIncomeProvider) - ref.watch(monthlyTotalProvider);
 });
 
 final monthlyTotalByCategoryProvider = Provider<Map<String, double>>((ref) {
@@ -42,6 +78,33 @@ final monthlyTotalByCategoryProvider = Provider<Map<String, double>>((ref) {
       );
 });
 
+// ─── Yearly (for stats) ───────────────────────────────────────────────────────
+
 final yearlyExpensesProvider = FutureProvider<List<Expense>>((ref) {
-  return ref.watch(expenseRepositoryProvider).getForStats(DateTime.now().year);
+  return ref.watch(expenseRepositoryProvider).getForStats(
+        DateTime.now().year,
+        type: TransactionType.expense,
+      );
+});
+
+final yearlyIncomesProvider = FutureProvider<List<Expense>>((ref) {
+  return ref.watch(expenseRepositoryProvider).getForStats(
+        DateTime.now().year,
+        type: TransactionType.income,
+      );
+});
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+
+final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
+  return SqfliteCategoryRepository(ref.watch(databaseServiceProvider));
+});
+
+final customCategoriesProvider = StreamProvider<List<ExpenseCategory>>((ref) {
+  return ref.watch(categoryRepositoryProvider).watchAll();
+});
+
+final allCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
+  final customs = ref.watch(customCategoriesProvider).valueOrNull ?? [];
+  return [...ExpenseCategory.builtins.where((c) => !c.isIncome), ...customs];
 });

@@ -1,5 +1,6 @@
 import 'expense_category.dart';
 import 'expense_source.dart';
+import 'transaction_type.dart';
 
 class Expense {
   final int? id;
@@ -10,6 +11,7 @@ class Expense {
   final String? notes;
   final DateTime date;
   final ExpenseSource source;
+  final TransactionType type;
   final String? bankName;
   final String? cardLastFour;
   final String? merchantName;
@@ -24,11 +26,14 @@ class Expense {
     this.notes,
     required this.date,
     this.source = ExpenseSource.manual,
+    this.type = TransactionType.expense,
     this.bankName,
     this.cardLastFour,
     this.merchantName,
     this.gmailMessageId,
   });
+
+  bool get isIncome => type == TransactionType.income;
 
   Expense copyWith({
     int? id,
@@ -39,6 +44,7 @@ class Expense {
     String? notes,
     DateTime? date,
     ExpenseSource? source,
+    TransactionType? type,
     String? bankName,
     String? cardLastFour,
     String? merchantName,
@@ -53,6 +59,7 @@ class Expense {
       notes: notes ?? this.notes,
       date: date ?? this.date,
       source: source ?? this.source,
+      type: type ?? this.type,
       bankName: bankName ?? this.bankName,
       cardLastFour: cardLastFour ?? this.cardLastFour,
       merchantName: merchantName ?? this.merchantName,
@@ -69,6 +76,7 @@ class Expense {
         'notes': notes,
         'date': date.millisecondsSinceEpoch,
         'source': source.name,
+        'type': type.name,
         'bank_name': bankName,
         'card_last_four': cardLastFour,
         'merchant_name': merchantName,
@@ -79,16 +87,17 @@ class Expense {
         id: map['id'] as int?,
         amount: (map['amount'] as num).toDouble(),
         currency: map['currency'] as String? ?? 'COP',
-        category: ExpenseCategory.values.firstWhere(
-          (c) => c.name == map['category'],
-          orElse: () => ExpenseCategory.other,
-        ),
+        category: ExpenseCategory.fromKey(map['category'] as String? ?? 'other'),
         description: map['description'] as String? ?? '',
         notes: map['notes'] as String?,
         date: DateTime.fromMillisecondsSinceEpoch(map['date'] as int),
         source: ExpenseSource.values.firstWhere(
           (s) => s.name == map['source'],
           orElse: () => ExpenseSource.manual,
+        ),
+        type: TransactionType.values.firstWhere(
+          (t) => t.name == map['type'],
+          orElse: () => TransactionType.expense,
         ),
         bankName: map['bank_name'] as String?,
         cardLastFour: map['card_last_four'] as String?,

@@ -11,9 +11,10 @@ class DatabaseService {
 
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: _onOpen,
     );
   }
 
@@ -33,7 +34,8 @@ class DatabaseService {
         bank_name TEXT,
         card_last_four TEXT,
         merchant_name TEXT,
-        gmail_message_id TEXT UNIQUE
+        gmail_message_id TEXT UNIQUE,
+        type TEXT NOT NULL DEFAULT 'expense'
       )
     ''');
     await db.execute('CREATE INDEX idx_expenses_date ON expenses(date)');
@@ -44,6 +46,23 @@ class DatabaseService {
         value TEXT NOT NULL
       )
     ''');
+    await db.execute('''
+      CREATE TABLE categories (
+        key TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        color_value INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _onOpen(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(expenses)');
+    final hasType = cols.any((c) => c['name'] == 'type');
+    if (!hasType) {
+      await db.execute(
+        "ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
+      );
+    }
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -57,6 +76,20 @@ class DatabaseService {
           value TEXT NOT NULL
         )
       ''');
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS categories (
+          key TEXT PRIMARY KEY,
+          label TEXT NOT NULL,
+          color_value INTEGER NOT NULL
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      await db.execute(
+        "ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
+      );
     }
   }
 

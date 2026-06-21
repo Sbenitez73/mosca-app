@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/mosca_button.dart';
 import '../providers/gmail_sync_provider.dart';
@@ -62,6 +63,27 @@ class GmailSetupScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Categories ────────────────────────────────────────────────
+          Card(
+            child: ListTile(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.label_rounded, color: AppColors.primary),
+              ),
+              title: const Text('Mis categorías'),
+              subtitle: const Text('Crea categorías personalizadas'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.push('/categories'),
             ),
           ),
 

@@ -69,113 +69,81 @@ class GmailParser {
 
   // ─── Transaction type validation ─────────────────────────────────────────────
 
-  // Keywords whose presence means the email is NOT a purchase (deposits,
-  // transfers received, promotional, statements, etc.)
-  static const _globalRejectKeywords = [
-    'recibiste',
-    'te enviaron',
-    'abono',
-    'consignación',
-    'depósito recibido',
-    'transferencia recibida',
-    'pago de nómina',
-    'reembolso',
-    'devolución',
-    'extracto',
-    'resumen de cuenta',
-    'estado de cuenta',
-    'saldo disponible',
-    'tu saldo es',
-    'cupo disponible',
-    'crédito aprobado',
-    'promoción',
-    'oferta especial',
-    'newsletter',
-    'aviso de privacidad',
+  // Opt-in: the email must contain at least one phrase that confirms a real debit.
+  // This rejects marketing, welcome, loyalty, statement, and promotional emails
+  // without having to enumerate every possible reject keyword.
+  static const _transactionKeywords = [
+    // Purchase confirmations
+    'realizaste una compra',
+    'realizaste un pago',
+    'compra realizada',
+    'compra aprobada',
+    'compra exitosa',
+    // Charges / debits
+    'cargo a tu',
+    'se realizó un cargo',
+    'debitamos',
+    'se debitó',
+    'fue debitado',
+    'débito en tu',
+    // Withdrawals
+    'retiro de',
+    'retiraste',
+    // Transfers sent (Bre-B, Nequi, PSE)
+    'enviaste',
+    'transferiste',
+    // Payments made
+    'pagaste',
+    'pago exitoso',
+    'pago realizado',
+    'pago procesado',
+    // Transaction approved
+    'transacción aprobada',
+    'transacción realizada',
+    // Generic charge notice
+    'cobro de',
+    'se realizó el cobro',
   ];
-
-  // Bank-specific keywords that CONFIRM a debit/purchase notification.
-  // At least one must appear in subject or body.
-  static const _bankDebitKeywords = {
-    'Bancolombia': [
-      'realizaste un pago',
-      'realizaste una compra',
-      'compra aprobada',
-      'usaste tu tarjeta',
-      'débito',
-      'cargo en tu cuenta',
-      'retiraste',
-      'retiro en',
-      'pagaste',
-    ],
-    'Nequi': [
-      'pagaste',
-      'enviaste',
-      'realizaste un pago',
-      'compraste',
-    ],
-    'Davivienda': [
-      'compra aprobada',
-      'realizó una compra',
-      'cargo realizado',
-      'débito en cuenta',
-      'transacción aprobada',
-    ],
-    'BBVA': [
-      'cargo realizado',
-      'compra realizada',
-      'realizaste un cargo',
-      'débito',
-      'transacción realizada',
-    ],
-    'Nubank': [
-      'compra aprovada',
-      'você comprou',
-      'você pagou',
-      'cobran',
-      'pagamento realizado',
-      'compra realizada',
-    ],
-    'Falabella': [
-      'cargo en tu',
-      'compra realizada',
-      'realizaste una compra',
-      'cmr débito',
-      'cargo cmr',
-    ],
-  };
 
   static bool _isDebitTransaction(String subject, String body, String bank) {
     final content = '${subject.toLowerCase()} ${body.toLowerCase()}';
-
-    // Immediate reject if any non-purchase signal is found
-    if (_globalRejectKeywords.any((k) => content.contains(k))) return false;
-
-    // Must match at least one bank-specific purchase keyword
-    final keywords = _bankDebitKeywords[bank] ?? [];
-    return keywords.any((k) => content.contains(k));
+    return _transactionKeywords.any((k) => content.contains(k));
   }
 
   // ─── Amount parsing ──────────────────────────────────────────────────────────
 
   static _AmountResult? _parseAmount(String content, String bank) {
-    final patterns = [
+    final copPatterns = [
       RegExp(r'\$([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)'),
-      RegExp(r'R\$([\d]{1,3}(?:\.\d{3})*(?:,\d{1,2})?)'),
-      RegExp(r'USD\s+([\d,.]+)'),
+      // Nequi Bre-B and similar: "Enviaste de manera exitosa 20.000 a"
+      RegExp(r'(?:enviaste|transferiste)\s+(?:de\s+manera\s+exitosa\s+)?([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', caseSensitive: false),
     ];
 
-    for (final pattern in patterns) {
+    for (final pattern in copPatterns) {
       final match = pattern.firstMatch(content);
       if (match != null) {
         final raw = match.group(1)!;
         final amount = _normalizeAmount(raw, bank);
         if (amount != null && amount > 0) {
-          final currency = pattern.pattern.startsWith('R\$') ? 'BRL' : 'COP';
-          return _AmountResult(amount: amount, currency: currency);
+          return _AmountResult(amount: amount, currency: 'COP');
         }
       }
     }
+
+    // BRL (Nubank Brasil)
+    final brlMatch = RegExp(r'R\$([\d]{1,3}(?:\.\d{3})*(?:,\d{1,2})?)').firstMatch(content);
+    if (brlMatch != null) {
+      final amount = _normalizeAmount(brlMatch.group(1)!, bank);
+      if (amount != null && amount > 0) return _AmountResult(amount: amount, currency: 'BRL');
+    }
+
+    // USD
+    final usdMatch = RegExp(r'USD\s+([\d,.]+)').firstMatch(content);
+    if (usdMatch != null) {
+      final amount = double.tryParse(usdMatch.group(1)!.replaceAll(',', ''));
+      if (amount != null && amount > 0) return _AmountResult(amount: amount, currency: 'USD');
+    }
+
     return null;
   }
 

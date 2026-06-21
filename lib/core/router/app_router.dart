@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/expenses/data/models/expense.dart';
 import '../../features/expenses/presentation/screens/home_screen.dart';
 import '../../features/expenses/presentation/screens/expense_list_screen.dart';
+import '../../features/expenses/presentation/screens/edit_expense_screen.dart';
 import '../../features/quick_add/presentation/screens/quick_add_screen.dart';
+import '../../features/quick_add/presentation/screens/quick_add_detail_screen.dart';
 import '../../features/gmail_sync/presentation/screens/gmail_setup_screen.dart';
 import '../../features/stats/presentation/screens/stats_screen.dart';
 
@@ -31,11 +34,27 @@ final appRouter = GoRouter(
       ],
     ),
     GoRoute(
+      path: '/expenses/edit',
+      pageBuilder: (context, state) {
+        final expense = state.extra as Expense;
+        return MaterialPage(
+          fullscreenDialog: true,
+          child: EditExpenseScreen(expense: expense),
+        );
+      },
+    ),
+    GoRoute(
       path: '/quick-add',
       pageBuilder: (context, state) => const MaterialPage(
         fullscreenDialog: true,
         child: QuickAddScreen(),
       ),
+      routes: [
+        GoRoute(
+          path: 'detail',
+          builder: (context, state) => const QuickAddDetailScreen(),
+        ),
+      ],
     ),
   ],
 );

@@ -11,8 +11,9 @@ class DatabaseService {
 
     _db = await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -26,6 +27,7 @@ class DatabaseService {
         currency TEXT NOT NULL DEFAULT 'COP',
         category TEXT NOT NULL,
         description TEXT NOT NULL,
+        notes TEXT,
         date INTEGER NOT NULL,
         source TEXT NOT NULL DEFAULT 'manual',
         bank_name TEXT,
@@ -36,5 +38,43 @@ class DatabaseService {
     ''');
     await db.execute('CREATE INDEX idx_expenses_date ON expenses(date)');
     await db.execute('CREATE INDEX idx_expenses_category ON expenses(category)');
+    await db.execute('''
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE expenses ADD COLUMN notes TEXT');
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      ''');
+    }
+  }
+
+  Future<String?> getSetting(String key) async {
+    final rows = await _db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first['value'] as String?;
+  }
+
+  Future<void> setSetting(String key, String value) async {
+    await _db.insert(
+      'settings',
+      {'key': key, 'value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 }

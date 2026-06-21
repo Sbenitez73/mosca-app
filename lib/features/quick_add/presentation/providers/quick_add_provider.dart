@@ -7,14 +7,16 @@ import '../../../expenses/presentation/providers/expenses_provider.dart';
 class QuickAddState {
   final String amountBuffer;
   final ExpenseCategory? category;
-  final String description;
+  final String title;
+  final String notes;
   final bool isSaving;
   final String? error;
 
   const QuickAddState({
     this.amountBuffer = '',
     this.category,
-    this.description = '',
+    this.title = '',
+    this.notes = '',
     this.isSaving = false,
     this.error,
   });
@@ -29,14 +31,16 @@ class QuickAddState {
   QuickAddState copyWith({
     String? amountBuffer,
     ExpenseCategory? category,
-    String? description,
+    String? title,
+    String? notes,
     bool? isSaving,
     String? error,
   }) {
     return QuickAddState(
       amountBuffer: amountBuffer ?? this.amountBuffer,
       category: category ?? this.category,
-      description: description ?? this.description,
+      title: title ?? this.title,
+      notes: notes ?? this.notes,
       isSaving: isSaving ?? this.isSaving,
       error: error,
     );
@@ -44,7 +48,8 @@ class QuickAddState {
 
   QuickAddState clearCategory() => QuickAddState(
         amountBuffer: amountBuffer,
-        description: description,
+        title: title,
+        notes: notes,
         isSaving: isSaving,
       );
 
@@ -81,20 +86,21 @@ class QuickAddNotifier extends Notifier<QuickAddState> {
         : state.copyWith(category: category);
   }
 
-  void setDescription(String description) {
-    state = state.copyWith(description: description);
-  }
+  void setTitle(String v) => state = state.copyWith(title: v);
+  void setNotes(String v) => state = state.copyWith(notes: v);
 
   Future<bool> save({String currency = 'COP'}) async {
     if (!state.isValid) return false;
 
     state = state.copyWith(isSaving: true);
     try {
+      final title = state.title.trim();
       final expense = Expense(
         amount: state.parsedAmount!,
         currency: currency,
         category: state.category!,
-        description: state.description.trim(),
+        description: title.isEmpty ? state.category!.label : title,
+        notes: state.notes.trim().isEmpty ? null : state.notes.trim(),
         date: DateTime.now(),
         source: ExpenseSource.manual,
       );

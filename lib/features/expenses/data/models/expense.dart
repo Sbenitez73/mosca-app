@@ -7,6 +7,7 @@ class Expense {
   final String currency;
   final ExpenseCategory category;
   final String description;
+  final String? notes;
   final DateTime date;
   final ExpenseSource source;
   final String? bankName;
@@ -20,6 +21,7 @@ class Expense {
     this.currency = 'COP',
     required this.category,
     required this.description,
+    this.notes,
     required this.date,
     this.source = ExpenseSource.manual,
     this.bankName,
@@ -34,6 +36,7 @@ class Expense {
     String? currency,
     ExpenseCategory? category,
     String? description,
+    String? notes,
     DateTime? date,
     ExpenseSource? source,
     String? bankName,
@@ -47,6 +50,7 @@ class Expense {
       currency: currency ?? this.currency,
       category: category ?? this.category,
       description: description ?? this.description,
+      notes: notes ?? this.notes,
       date: date ?? this.date,
       source: source ?? this.source,
       bankName: bankName ?? this.bankName,
@@ -62,6 +66,7 @@ class Expense {
         'currency': currency,
         'category': category.name,
         'description': description,
+        'notes': notes,
         'date': date.millisecondsSinceEpoch,
         'source': source.name,
         'bank_name': bankName,
@@ -79,6 +84,7 @@ class Expense {
           orElse: () => ExpenseCategory.other,
         ),
         description: map['description'] as String? ?? '',
+        notes: map['notes'] as String?,
         date: DateTime.fromMillisecondsSinceEpoch(map['date'] as int),
         source: ExpenseSource.values.firstWhere(
           (s) => s.name == map['source'],

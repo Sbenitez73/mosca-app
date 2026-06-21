@@ -85,8 +85,33 @@ class GmailSyncState {
 }
 
 class GmailSyncNotifier extends Notifier<GmailSyncState> {
+  static const _lastSyncKey = 'gmail_last_sync';
+
   @override
-  GmailSyncState build() => const GmailSyncState();
+  GmailSyncState build() {
+    _restoreLastSync();
+    return const GmailSyncState();
+  }
+
+  Future<void> _restoreLastSync() async {
+    final db = ref.read(databaseServiceProvider);
+    final value = await db.getSetting(_lastSyncKey);
+    if (value != null) {
+      final dt = DateTime.tryParse(value);
+      if (dt != null) state = state.copyWith(lastSync: dt);
+    }
+  }
+
+  Future<DateTime?> _loadLastSync() async {
+    final db = ref.read(databaseServiceProvider);
+    final value = await db.getSetting(_lastSyncKey);
+    return value != null ? DateTime.tryParse(value) : null;
+  }
+
+  Future<void> _saveLastSync(DateTime dt) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.setSetting(_lastSyncKey, dt.toIso8601String());
+  }
 
   Future<void> sync() async {
     state = state.copyWith(isSyncing: true, error: null);
@@ -95,7 +120,8 @@ class GmailSyncNotifier extends Notifier<GmailSyncState> {
       final client = ref.read(gmailClientProvider);
       final repo = ref.read(expenseRepositoryProvider);
 
-      final ids = await client.fetchTransactionMessageIds();
+      final lastSync = await _loadLastSync();
+      final ids = await client.fetchTransactionMessageIds(since: lastSync);
       int added = 0;
       int duplicates = 0;
       int parserRejected = 0;
@@ -131,11 +157,13 @@ class GmailSyncNotifier extends Notifier<GmailSyncState> {
         added++;
       }
 
+      final syncTime = DateTime.now();
+      await _saveLastSync(syncTime);
       state = state.copyWith(
         isSyncing: false,
         newExpenses: added,
         skipped: duplicates + parserRejected,
-        lastSync: DateTime.now(),
+        lastSync: syncTime,
       );
     } on DioException catch (e) {
       state = state.copyWith(isSyncing: false, error: 'Error de red: ${e.message}');

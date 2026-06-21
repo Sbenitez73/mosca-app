@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../providers/expenses_provider.dart';
 import '../widgets/expense_card.dart';
@@ -82,15 +83,29 @@ class ExpenseListScreen extends ConsumerWidget {
                       children: dayExpenses.asMap().entries.map((entry) {
                         final idx = entry.key;
                         final item = entry.value;
-                        return Column(
-                          children: [
-                            ExpenseCard(
-                              expense: item.expense,
-                              onDelete: () => _confirmDelete(context, ref, item.expense.id),
+                        return Dismissible(
+                          key: ValueKey(item.expense.id ?? item.expense.gmailMessageId),
+                          direction: DismissDirection.endToStart,
+                          confirmDismiss: (_) => _confirmDelete(context, ref, item.expense.id),
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            if (idx < dayExpenses.length - 1)
-                              const Divider(height: 1, indent: 68),
-                          ],
+                            child: const Icon(Icons.delete_rounded, color: Colors.white),
+                          ),
+                          child: Column(
+                            children: [
+                              ExpenseCard(
+                                expense: item.expense,
+                                onTap: () => context.push('/expenses/edit', extra: item.expense),
+                              ),
+                              if (idx < dayExpenses.length - 1)
+                                const Divider(height: 1, indent: 68),
+                            ],
+                          ),
                         );
                       }).toList(),
                     ),
@@ -104,16 +119,17 @@ class ExpenseListScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, int id) async {
+  Future<bool> _confirmDelete(BuildContext context, WidgetRef ref, int? id) async {
+    if (id == null) return false;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Eliminar gasto'),
         content: const Text('¿Seguro que quieres eliminar este gasto?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancelar')),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
           ),
         ],
@@ -121,7 +137,9 @@ class ExpenseListScreen extends ConsumerWidget {
     );
     if (confirmed == true) {
       await ref.read(expenseRepositoryProvider).delete(id);
+      return true;
     }
+    return false;
   }
 
   String _capitalize(String s) =>

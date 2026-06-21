@@ -3,13 +3,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 const _gmailBase = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-// Filters only by sender domain — specific enough to avoid most noise.
-// The parser's _isDebitTransaction() does the fine-grained classification.
-// Subject filters were removed because banks put keywords in the body, not subject.
+// Bank sender domains. The parser does the fine-grained classification.
 // Gmail's from: operator matches exact domain, not subdomains.
 // Bancolombia sends from at least two distinct domains.
-const _transactionQuery =
-    'newer_than:90d '
+const _bankFroms =
     '({from:bancolombia.com from:notificacionesbancolombia.com '
     'from:an.notificacionesbancolombia.com '
     'from:nequi.com.co from:davivienda.com from:bbva.com.co '
@@ -31,11 +28,21 @@ class GmailClient {
   Future<bool> get isSignedIn => _googleSignIn.isSignedIn();
   GoogleSignInAccount? get currentUser => _googleSignIn.currentUser;
 
-  Future<List<String>> fetchTransactionMessageIds({int maxResults = 100}) async {
+  Future<List<String>> fetchTransactionMessageIds({
+    int maxResults = 200,
+    DateTime? since,
+  }) async {
+    final dateFilter = since != null
+        // Gmail's after: operator takes Unix seconds
+        ? 'after:${since.millisecondsSinceEpoch ~/ 1000}'
+        // First-ever sync: backfill last 30 days
+        : 'newer_than:30d';
+    final query = '$dateFilter $_bankFroms';
+
     final auth = await _requireAuth();
     final response = await _dio.get(
       '$_gmailBase/messages',
-      queryParameters: {'q': _transactionQuery, 'maxResults': maxResults},
+      queryParameters: {'q': query, 'maxResults': maxResults},
       options: Options(headers: {'Authorization': 'Bearer $auth'}),
     );
     final messages = List<Map<String, dynamic>>.from(

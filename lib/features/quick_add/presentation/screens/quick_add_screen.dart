@@ -17,17 +17,12 @@ class QuickAddScreen extends ConsumerStatefulWidget {
 }
 
 class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
-  final _descController = TextEditingController();
   @override
   void initState() {
     super.initState();
-    ref.read(quickAddProvider.notifier).reset();
-  }
-
-  @override
-  void dispose() {
-    _descController.dispose();
-    super.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(quickAddProvider.notifier).reset();
+    });
   }
 
   @override
@@ -37,6 +32,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
         backgroundColor: colorScheme.surface,
@@ -50,21 +46,15 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: TextButton(
-                onPressed: state.isSaving ? null : () => _save(context),
-                child: state.isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(
-                        'Guardar',
-                        style: TextStyle(
-                          color: colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
+                onPressed: () => context.push('/quick-add/detail'),
+                child: Text(
+                  'Siguiente',
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
               ),
             ),
         ],
@@ -79,23 +69,25 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 150),
-                      style: TextStyle(
-                        fontSize: state.amountBuffer.length > 6 ? 44 : 56,
-                        fontWeight: FontWeight.w800,
-                        color: state.amountBuffer.isEmpty
-                            ? colorScheme.onSurface.withValues(alpha: 0.2)
-                            : colorScheme.onSurface,
-                        letterSpacing: -1,
-                      ),
-                      child: Text(
-                        state.amountBuffer.isEmpty
-                            ? '\$0'
-                            : CurrencyFormatter.format(
-                                state.parsedAmount ?? 0,
-                              ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 150),
+                        style: TextStyle(
+                          fontSize: 56,
+                          fontWeight: FontWeight.w800,
+                          color: state.amountBuffer.isEmpty
+                              ? colorScheme.onSurface.withValues(alpha: 0.2)
+                              : colorScheme.onSurface,
+                          letterSpacing: -1,
+                        ),
+                        child: Text(
+                          state.amountBuffer.isEmpty
+                              ? '\$0'
+                              : CurrencyFormatter.format(state.parsedAmount ?? 0),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -106,11 +98,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
-                              state.category!.icon,
-                              size: 16,
-                              color: state.category!.color,
-                            ),
+                            Icon(state.category!.icon, size: 16, color: state.category!.color),
                             const SizedBox(width: 6),
                             Text(
                               state.category!.label,
@@ -165,14 +153,17 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(cat.icon, size: 18, color: selected ? cat.color : colorScheme.onSurface.withValues(alpha: 0.4)),
+                        Icon(cat.icon, size: 18,
+                            color: selected ? cat.color : colorScheme.onSurface.withValues(alpha: 0.4)),
                         const SizedBox(width: 6),
                         Text(
                           cat.label,
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            color: selected ? cat.color : colorScheme.onSurface.withValues(alpha: 0.55),
+                            color: selected
+                                ? cat.color
+                                : colorScheme.onSurface.withValues(alpha: 0.55),
                           ),
                         ),
                       ],
@@ -183,20 +174,6 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             ),
           ),
 
-          // ── Optional description ─────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: TextField(
-              controller: _descController,
-              onChanged: ref.read(quickAddProvider.notifier).setDescription,
-              decoration: const InputDecoration(
-                hintText: 'Descripción (opcional)',
-                prefixIcon: Icon(Icons.edit_note_rounded),
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-          ),
           const SizedBox(height: 8),
 
           // ── Numpad ────────────────────────────────────────────────────────
@@ -224,15 +201,6 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
         ],
       ),
     );
-  }
-
-  Future<void> _save(BuildContext context) async {
-    HapticFeedback.mediumImpact();
-    final success = await ref.read(quickAddProvider.notifier).save();
-    if (success && mounted) {
-      await LiveActivityService.end();
-      context.pop();
-    }
   }
 
   void _updateLiveActivity(WidgetRef ref) {
@@ -295,14 +263,7 @@ class _Numpad extends StatelessWidget {
       children: [
         Expanded(child: _NumKey(label: ',', onTap: onDecimal, dimmed: true)),
         Expanded(child: _NumKey(label: '0', onTap: () => onDigit('0'))),
-        Expanded(
-          child: _NumKey(
-            label: '⌫',
-            onTap: onBackspace,
-            dimmed: true,
-            isIcon: true,
-          ),
-        ),
+        Expanded(child: _NumKey(label: '⌫', onTap: onBackspace, dimmed: true, isIcon: true)),
       ],
     );
   }
@@ -324,7 +285,6 @@ class _NumKey extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return GestureDetector(
       onTap: onTap,
       child: Container(

@@ -6,59 +6,114 @@ import '../../../../core/utils/date_formatter.dart';
 import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
 
-class StatsScreen extends ConsumerWidget {
+class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final expensesAsync = ref.watch(yearlyExpensesProvider);
-    final incomesAsync = ref.watch(yearlyIncomesProvider);
-    final monthlyTotals = ref.watch(monthlyTotalByCategoryProvider);
+  ConsumerState<StatsScreen> createState() => _StatsScreenState();
+}
+
+class _StatsScreenState extends ConsumerState<StatsScreen> {
+  late DateTime _month;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _month = DateTime(now.year, now.month);
+  }
+
+  void _prev() => setState(() => _month = DateTime(_month.year, _month.month - 1));
+  void _next() => setState(() => _month = DateTime(_month.year, _month.month + 1));
+
+  bool get _isCurrentMonth {
+    final now = DateTime.now();
+    return _month.year == now.year && _month.month == now.month;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final ym = (_month.year, _month.month);
+    final prevDate = DateTime(_month.year, _month.month - 1);
+    final prevYm = (prevDate.year, prevDate.month);
+
+    final expensesAsync = ref.watch(monthExpensesProvider(ym));
+    final incomesAsync  = ref.watch(monthIncomesProvider(ym));
+    final yearlyAsync   = ref.watch(yearlyStatsProvider(_month.year));
+    final prevExpensesAsync = ref.watch(monthExpensesProvider(prevYm));
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(DateFormatter.monthYear(DateTime.now())),
-      ),
-      body: expensesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (expenses) {
-          final byMonthExpense = List.generate(12, (_) => 0.0);
-          for (final e in expenses) {
-            byMonthExpense[e.date.month - 1] += e.amount;
-          }
-
-          final byMonthIncome = List.generate(12, (_) => 0.0);
-          incomesAsync.whenData((incomes) {
-            for (final e in incomes) {
-              byMonthIncome[e.date.month - 1] += e.amount;
-            }
-          });
-
-          final total = monthlyTotals.values.fold(0.0, (a, b) => a + b);
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-            children: [
-              const SizedBox(height: 16),
-              _SectionHeader('Ingresos vs Gastos'),
-              const SizedBox(height: 12),
-              _ComparisonChart(
-                byMonthExpense: byMonthExpense,
-                byMonthIncome: byMonthIncome,
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left_rounded),
+              onPressed: _prev,
+            ),
+            Text(
+              DateFormatter.monthName(_month),
+              style: theme.textTheme.titleLarge,
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.chevron_right_rounded,
+                color: _isCurrentMonth
+                    ? theme.colorScheme.onSurface.withValues(alpha: 0.25)
+                    : null,
               ),
-              const SizedBox(height: 28),
-              _SectionHeader('Por categoría — este mes'),
-              const SizedBox(height: 12),
-              if (monthlyTotals.isNotEmpty && total > 0) ...[
-                _PieSection(totals: monthlyTotals, total: total),
-                const SizedBox(height: 20),
-                _CategoryList(totals: monthlyTotals, total: total),
-              ] else
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
+              onPressed: _isCurrentMonth ? null : _next,
+            ),
+          ],
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        children: [
+          // ── Monthly summary ─────────────────────────────────────────────
+          _MonthlySummary(
+            expensesAsync: expensesAsync,
+            incomesAsync: incomesAsync,
+          ),
+          const SizedBox(height: 24),
+
+          // ── Yearly chart ────────────────────────────────────────────────
+          Text('Ingresos vs Gastos', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+          yearlyAsync.when(
+            loading: () => const SizedBox(
+              height: 220,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => Text('Error: $e'),
+            data: (stats) => _ComparisonChart(
+              year: _month.year,
+              highlightMonth: _month.month,
+              byMonthExpense: _aggregate(stats.expenses),
+              byMonthIncome: _aggregate(stats.incomes),
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // ── Category breakdown ──────────────────────────────────────────
+          Text('Por categoría', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+          expensesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Text('Error: $e'),
+            data: (expenses) {
+              final totals = <String, double>{};
+              for (final e in expenses) {
+                totals[e.category.name] =
+                    (totals[e.category.name] ?? 0) + e.amount;
+              }
+              final total = totals.values.fold(0.0, (a, b) => a + b);
+              if (totals.isEmpty || total == 0) {
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
                     child: Text(
                       'Sin gastos este mes',
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -66,43 +121,162 @@ class StatsScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                ),
-            ],
-          );
-        },
+                );
+              }
+              return Column(
+                children: [
+                  _PieSection(totals: totals, total: total),
+                  const SizedBox(height: 20),
+                  _CategoryList(totals: totals, total: total),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 28),
+
+          // ── Month-over-month comparison ─────────────────────────────────
+          _MonthComparison(
+            prevMonthName: DateFormatter.monthName(prevDate),
+            currentAsync: expensesAsync,
+            prevAsync: prevExpensesAsync,
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<double> _aggregate(List<dynamic> items) {
+    final result = List.generate(12, (_) => 0.0);
+    for (final e in items) {
+      result[(e.date as DateTime).month - 1] += (e.amount as double);
+    }
+    return result;
+  }
+}
+
+// ─── Monthly summary row ─────────────────────────────────────────────────────
+
+class _MonthlySummary extends StatelessWidget {
+  final AsyncValue<List<dynamic>> expensesAsync;
+  final AsyncValue<List<dynamic>> incomesAsync;
+
+  const _MonthlySummary({required this.expensesAsync, required this.incomesAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    final expenses = expensesAsync.maybeWhen(
+      data: (list) => list.fold<double>(0, (s, e) => s + (e.amount as double)),
+      orElse: () => 0.0,
+    );
+    final incomes = incomesAsync.maybeWhen(
+      data: (list) => list.fold<double>(0, (s, e) => s + (e.amount as double)),
+      orElse: () => 0.0,
+    );
+    final balance = incomes - expenses;
+    final isLoading = expensesAsync.isLoading || incomesAsync.isLoading;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Row(
+                children: [
+                  _MetricCell(
+                    label: 'Gastos',
+                    value: expenses,
+                    color: const Color(0xFFE53935),
+                  ),
+                  _Divider(),
+                  _MetricCell(
+                    label: 'Ingresos',
+                    value: incomes,
+                    color: const Color(0xFF4CAF50),
+                  ),
+                  _Divider(),
+                  _MetricCell(
+                    label: 'Balance',
+                    value: balance,
+                    color: balance >= 0
+                        ? const Color(0xFF4CAF50)
+                        : const Color(0xFFE53935),
+                    showSign: true,
+                  ),
+                ],
+              ),
       ),
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader(this.title);
-
+class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
-      Text(title, style: Theme.of(context).textTheme.titleLarge);
+      Container(width: 1, height: 40, color: Theme.of(context).dividerColor);
 }
 
-// ─── Comparison chart (income vs expense per month) ──────────────────────────
+class _MetricCell extends StatelessWidget {
+  final String label;
+  final double value;
+  final Color color;
+  final bool showSign;
+
+  const _MetricCell({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.showSign = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final prefix = showSign && value > 0 ? '+' : '';
+    return Expanded(
+      child: Column(
+        children: [
+          Text(label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55))),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '$prefix${CurrencyFormatter.format(value)}',
+              style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Comparison chart ─────────────────────────────────────────────────────────
 
 class _ComparisonChart extends StatelessWidget {
+  final int year;
+  final int highlightMonth;
   final List<double> byMonthExpense;
   final List<double> byMonthIncome;
 
   const _ComparisonChart({
+    required this.year,
+    required this.highlightMonth,
     required this.byMonthExpense,
     required this.byMonthIncome,
   });
 
-  static const _months = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-  static const _incomeColor = Color(0xFF4CAF50);
+  static const _months = ['E','F','M','A','M','J','J','A','S','O','N','D'];
+  static const _incomeColor  = Color(0xFF4CAF50);
   static const _expenseColor = Color(0xFFE53935);
 
   @override
   Widget build(BuildContext context) {
     final allValues = [...byMonthExpense, ...byMonthIncome];
-    final max = allValues.isEmpty ? 1.0 : allValues.reduce((a, b) => a > b ? a : b);
+    final maxY = allValues.isEmpty ? 1.0
+        : allValues.reduce((a, b) => a > b ? a : b) * 1.25;
 
     return Card(
       child: Padding(
@@ -113,47 +287,44 @@ class _ComparisonChart extends StatelessWidget {
               height: 180,
               child: BarChart(
                 BarChartData(
-                  maxY: max * 1.25,
+                  maxY: maxY,
                   gridData: const FlGridData(show: false),
                   borderData: FlBorderData(show: false),
                   titlesData: FlTitlesData(
-                    leftTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false)),
+                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        getTitlesWidget: (value, _) => Text(
-                          _months[value.toInt()],
-                          style: const TextStyle(fontSize: 11),
+                        getTitlesWidget: (v, m) => Text(
+                          _months[v.toInt()],
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: v.toInt() == highlightMonth - 1
+                                ? FontWeight.w700
+                                : FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
                   ),
                   barGroups: List.generate(12, (i) {
-                    final isCurrent = i == DateTime.now().month - 1;
+                    final highlight = i == highlightMonth - 1;
                     return BarChartGroupData(
                       x: i,
-                      groupVertically: false,
                       barRods: [
                         BarChartRodData(
                           toY: byMonthExpense[i],
-                          color: _expenseColor
-                              .withValues(alpha: isCurrent ? 1 : 0.4),
+                          color: _expenseColor.withValues(alpha: highlight ? 1 : 0.35),
                           width: 8,
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(4)),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                         ),
                         BarChartRodData(
                           toY: byMonthIncome[i],
-                          color: _incomeColor
-                              .withValues(alpha: isCurrent ? 1 : 0.4),
+                          color: _incomeColor.withValues(alpha: highlight ? 1 : 0.35),
                           width: 8,
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(4)),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                         ),
                       ],
                     );
@@ -186,16 +357,15 @@ class _Legend extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         children: [
           Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
+              width: 10, height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 6),
           Text(label,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7))),
         ],
       );
 }
@@ -205,7 +375,6 @@ class _Legend extends StatelessWidget {
 class _PieSection extends StatelessWidget {
   final Map<String, double> totals;
   final double total;
-
   const _PieSection({required this.totals, required this.total});
 
   @override
@@ -213,11 +382,7 @@ class _PieSection extends StatelessWidget {
     final sections = totals.entries.map((e) {
       final cat = ExpenseCategory.fromKey(e.key);
       return PieChartSectionData(
-        value: e.value,
-        color: cat.color,
-        radius: 60,
-        title: '',
-      );
+          value: e.value, color: cat.color, radius: 60, title: '');
     }).toList();
 
     return Card(
@@ -225,13 +390,11 @@ class _PieSection extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: SizedBox(
           height: 180,
-          child: PieChart(
-            PieChartData(
-              sections: sections,
-              centerSpaceRadius: 48,
-              sectionsSpace: 2,
-            ),
-          ),
+          child: PieChart(PieChartData(
+            sections: sections,
+            centerSpaceRadius: 48,
+            sectionsSpace: 2,
+          )),
         ),
       ),
     );
@@ -243,7 +406,6 @@ class _PieSection extends StatelessWidget {
 class _CategoryList extends StatelessWidget {
   final Map<String, double> totals;
   final double total;
-
   const _CategoryList({required this.totals, required this.total});
 
   @override
@@ -256,17 +418,14 @@ class _CategoryList extends StatelessWidget {
       children: sorted.map((e) {
         final cat = ExpenseCategory.fromKey(e.key);
         final pct = e.value / total;
-
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             children: [
               Container(
-                width: 10,
-                height: 10,
-                decoration:
-                    BoxDecoration(color: cat.color, shape: BoxShape.circle),
-              ),
+                  width: 10, height: 10,
+                  decoration:
+                      BoxDecoration(color: cat.color, shape: BoxShape.circle)),
               const SizedBox(width: 10),
               Expanded(
                   child: Text(cat.label, style: theme.textTheme.bodyMedium)),
@@ -274,18 +433,15 @@ class _CategoryList extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    CurrencyFormatter.format(e.value),
-                    style: theme.textTheme.labelLarge,
-                  ),
+                  Text(CurrencyFormatter.format(e.value),
+                      style: theme.textTheme.labelLarge),
                   SizedBox(
                     width: 80,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: pct,
-                        backgroundColor:
-                            cat.color.withValues(alpha: 0.15),
+                        backgroundColor: cat.color.withValues(alpha: 0.15),
                         valueColor: AlwaysStoppedAnimation(cat.color),
                         minHeight: 4,
                       ),
@@ -297,6 +453,149 @@ class _CategoryList extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ─── Month-over-month comparison ──────────────────────────────────────────────
+
+class _MonthComparison extends StatelessWidget {
+  final String prevMonthName;
+  final AsyncValue<List<dynamic>> currentAsync;
+  final AsyncValue<List<dynamic>> prevAsync;
+
+  const _MonthComparison({
+    required this.prevMonthName,
+    required this.currentAsync,
+    required this.prevAsync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final current = currentAsync.maybeWhen(
+      data: (list) {
+        final m = <String, double>{};
+        for (final e in list) {
+          m[e.category.name] = (m[e.category.name] ?? 0) + (e.amount as double);
+        }
+        return m;
+      },
+      orElse: () => <String, double>{},
+    );
+
+    final prev = prevAsync.maybeWhen(
+      data: (list) {
+        final m = <String, double>{};
+        for (final e in list) {
+          m[e.category.name] = (m[e.category.name] ?? 0) + (e.amount as double);
+        }
+        return m;
+      },
+      orElse: () => <String, double>{},
+    );
+
+    final isLoading = currentAsync.isLoading || prevAsync.isLoading;
+
+    // Merge keys from both months, sort by current amount desc
+    final keys = {...current.keys, ...prev.keys}.toList()
+      ..sort((a, b) => (current[b] ?? 0).compareTo(current[a] ?? 0));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Vs $prevMonthName', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 12),
+        Card(
+          child: isLoading
+              ? const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : prev.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        'Sin datos del mes anterior',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        children: keys.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final key = entry.value;
+                          final cat = ExpenseCategory.fromKey(key);
+                          final cur = current[key] ?? 0;
+                          final prv = prev[key] ?? 0;
+                          final delta = cur - prv;
+                          final isMore = delta > 0;
+                          final deltaColor = isMore
+                              ? const Color(0xFFE53935)
+                              : const Color(0xFF4CAF50);
+                          final deltaStr = delta == 0
+                              ? '='
+                              : '${isMore ? '▲' : '▼'} ${CurrencyFormatter.format(delta.abs())}';
+
+                          return Column(
+                            children: [
+                              if (i > 0)
+                                const Divider(height: 1, indent: 16, endIndent: 16),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: cat.color.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(cat.icon, size: 17, color: cat.color),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(cat.label,
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(fontWeight: FontWeight.w500)),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          CurrencyFormatter.format(cur),
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(fontWeight: FontWeight.w700),
+                                        ),
+                                        Text(
+                                          deltaStr,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: delta == 0
+                                                ? theme.colorScheme.onSurface
+                                                    .withValues(alpha: 0.4)
+                                                : deltaColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ),
+        ),
+      ],
     );
   }
 }

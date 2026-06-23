@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/utils/date_formatter.dart';
+import '../widgets/category_picker_sheet.dart';
 import '../../data/models/expense.dart';
 import '../../data/models/expense_category.dart';
 import '../../data/models/expense_source.dart';
+import '../../data/models/transaction_type.dart';
 import '../providers/expenses_provider.dart';
 
 class EditExpenseScreen extends ConsumerStatefulWidget {
@@ -20,6 +22,7 @@ class EditExpenseScreen extends ConsumerStatefulWidget {
 
 class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
   late ExpenseCategory _category;
+  late DateTime _date;
   late final TextEditingController _amountController;
   late final TextEditingController _titleController;
   late final TextEditingController _descController;
@@ -33,6 +36,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
   void initState() {
     super.initState();
     _category = widget.expense.category;
+    _date = widget.expense.date;
     _amountController = TextEditingController(
       text: widget.expense.amount % 1 == 0
           ? widget.expense.amount.toInt().toString()
@@ -62,12 +66,30 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
     super.dispose();
   }
 
+  String get _typeLabel => switch (widget.expense.type) {
+    TransactionType.income   => 'ingreso',
+    TransactionType.transfer => 'movimiento',
+    TransactionType.expense  => 'gasto',
+  };
+
+  Future<void> _pickCategory(BuildContext context) async {
+    final categories = widget.expense.type == TransactionType.income
+        ? ExpenseCategory.incomeBuiltins
+        : ref.read(allCategoriesProvider);
+    final picked = await showCategoryPicker(
+      context,
+      categories: categories,
+      selected: _category,
+    );
+    if (picked != null) setState(() => _category = picked);
+  }
+
   Future<void> _delete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('Eliminar gasto'),
-        content: const Text('¿Seguro que quieres eliminar este gasto?'),
+        title: Text('Eliminar $_typeLabel'),
+        content: Text('¿Seguro que quieres eliminar este $_typeLabel?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx, false),
@@ -111,11 +133,12 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
           : (title.isEmpty ? _category.label : title),
       merchantName: _isGmail ? (title.isEmpty ? null : title) : widget.expense.merchantName,
       notes: notes.isEmpty ? null : notes,
-      date: widget.expense.date,
+      date: _date,
       source: widget.expense.source,
       bankName: widget.expense.bankName,
       cardLastFour: widget.expense.cardLastFour,
       gmailMessageId: widget.expense.gmailMessageId,
+      type: widget.expense.type,
     );
 
     setState(() {
@@ -142,7 +165,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
         backgroundColor: colorScheme.surface,
-        title: const Text('Editar gasto'),
+        title: Text('Editar ${_typeLabel[0].toUpperCase()}${_typeLabel.substring(1)}'),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline_rounded),
@@ -225,71 +248,56 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
               ),
             ),
 
+          const SizedBox(height: 20),
+
+          // ── Fecha ─────────────────────────────────────────────────────────
+          _EditDateRow(
+            date: _date,
+            onChanged: (d) => setState(() => _date = d),
+          ),
+
           const SizedBox(height: 24),
 
           // ── Categoría ────────────────────────────────────────────────────
-          Text(
-            'Categoría',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.onSurface.withValues(alpha: 0.55),
-              letterSpacing: 0.5,
+          if (widget.expense.type != TransactionType.transfer) ...[
+            Text(
+              'Categoría',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.55),
+                letterSpacing: 0.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: ref.watch(allCategoriesProvider).map((cat) {
-                final selected = _category == cat;
-                return GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _category = cat);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? cat.color.withValues(alpha: 0.15)
-                          : colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: selected ? cat.color : AppColors.divider,
-                        width: selected ? 2 : 1,
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => _pickCategory(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                decoration: BoxDecoration(
+                  color: _category.color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _category.color.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(_category.icon, size: 22, color: _category.color),
+                    const SizedBox(width: 12),
+                    Text(
+                      _category.label,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: _category.color,
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          cat.icon,
-                          size: 16,
-                          color: selected
-                              ? cat.color
-                              : colorScheme.onSurface.withValues(alpha: 0.4),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          cat.label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            color: selected
-                                ? cat.color
-                                : colorScheme.onSurface.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
+                    const Spacer(),
+                    Icon(Icons.keyboard_arrow_down_rounded,
+                        color: _category.color.withValues(alpha: 0.6)),
+                  ],
+                ),
+              ),
             ),
-          ),
-
-          const SizedBox(height: 24),
+            const SizedBox(height: 24),
+          ],
 
           // ── Título ───────────────────────────────────────────────────────
           Text(
@@ -326,7 +334,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
               textCapitalization: TextCapitalization.sentences,
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
-                hintText: 'Descripción del gasto…',
+                hintText: 'Descripción…',
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -364,6 +372,76 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
           const SizedBox(height: 40),
         ],
       ),
+    );
+  }
+}
+
+// ─── Date row ─────────────────────────────────────────────────────────────────
+
+class _EditDateRow extends StatelessWidget {
+  final DateTime date;
+  final ValueChanged<DateTime> onChanged;
+
+  const _EditDateRow({required this.date, required this.onChanged});
+
+  bool get _isToday {
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month && date.day == now.day;
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      onChanged(DateTime(picked.year, picked.month, picked.day,
+          date.hour, date.minute, date.second));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Icon(Icons.calendar_today_rounded,
+            size: 18, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _pick(context),
+            child: Text(
+              DateFormatter.dayMonthYear(date),
+              style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+        if (!_isToday)
+          TextButton(
+            onPressed: () => onChanged(DateTime.now()),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Hoy',
+              style: TextStyle(
+                  color: colorScheme.primary, fontWeight: FontWeight.w700),
+            ),
+          ),
+        IconButton(
+          icon: const Icon(Icons.edit_calendar_rounded),
+          iconSize: 20,
+          color: colorScheme.primary,
+          onPressed: () => _pick(context),
+        ),
+      ],
     );
   }
 }

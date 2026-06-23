@@ -52,6 +52,9 @@ dependencies:
   # Utils
   equatable: ^2.0.7
 
+  # iOS home screen widget data bridge
+  home_widget: ^0.7.0
+
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

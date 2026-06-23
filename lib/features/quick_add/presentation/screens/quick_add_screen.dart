@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../expenses/presentation/widgets/category_picker_sheet.dart';
 import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/data/models/transaction_type.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
@@ -41,10 +41,6 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.pop(),
-        ),
-        title: _TypeToggle(
-          selected: state.type,
-          onChanged: (t) => ref.read(quickAddProvider.notifier).setType(t),
         ),
         actions: [
           if (state.isValid)
@@ -128,61 +124,89 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             ),
           ),
 
+          // ── Type tabs ────────────────────────────────────────────────────
+          _TypeTabs(
+            selected: state.type,
+            onChanged: (t) => ref.read(quickAddProvider.notifier).setType(t),
+          ),
+
+          const SizedBox(height: 12),
+
           // ── Category picker ──────────────────────────────────────────────
-          SizedBox(
-            height: 80,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: (state.type == TransactionType.income
-                      ? ExpenseCategory.incomeBuiltins
-                      : ref.watch(allCategoriesProvider))
-                  .map((cat) {
-                final selected = state.category == cat;
-                return GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(quickAddProvider.notifier).setCategory(cat);
-                    _updateLiveActivity(ref);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: state.type == TransactionType.transfer
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: selected
-                          ? cat.color.withValues(alpha: 0.15)
-                          : colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: selected ? cat.color : AppColors.divider,
-                        width: selected ? 2 : 1,
-                      ),
+                      color: const Color(0xFF2196F3).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Row(
                       children: [
-                        Icon(cat.icon, size: 18,
-                            color: selected ? cat.color : colorScheme.onSurface.withValues(alpha: 0.4)),
-                        const SizedBox(width: 6),
+                        const Icon(Icons.swap_horiz_rounded, size: 20, color: Color(0xFF2196F3)),
+                        const SizedBox(width: 10),
                         Text(
-                          cat.label,
+                          'No cuenta como gasto ni ingreso',
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            color: selected
-                                ? cat.color
-                                : colorScheme.onSurface.withValues(alpha: 0.55),
+                            fontSize: 14,
+                            color: const Color(0xFF2196F3).withValues(alpha: 0.9),
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
+                  )
+                : GestureDetector(
+                    onTap: () => _pickCategory(context, ref, state),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: state.category != null
+                            ? state.category!.color.withValues(alpha: 0.1)
+                            : colorScheme.onSurface.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: state.category != null
+                              ? state.category!.color.withValues(alpha: 0.4)
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          if (state.category != null) ...[
+                            Icon(state.category!.icon, size: 20, color: state.category!.color),
+                            const SizedBox(width: 10),
+                            Text(
+                              state.category!.label,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: state.category!.color,
+                              ),
+                            ),
+                          ] else ...[
+                            Icon(Icons.grid_view_rounded,
+                                size: 20, color: colorScheme.onSurface.withValues(alpha: 0.35)),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Seleccionar categoría',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: colorScheme.onSurface.withValues(alpha: 0.4),
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          Icon(Icons.keyboard_arrow_down_rounded,
+                              color: colorScheme.onSurface.withValues(alpha: 0.35)),
+                        ],
+                      ),
+                    ),
                   ),
-                );
-              }).toList(),
-            ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
 
           // ── Numpad ────────────────────────────────────────────────────────
           Container(
@@ -211,6 +235,22 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
     );
   }
 
+  Future<void> _pickCategory(BuildContext context, WidgetRef ref, QuickAddState state) async {
+    HapticFeedback.selectionClick();
+    final categories = state.type == TransactionType.income
+        ? ExpenseCategory.incomeBuiltins
+        : ref.read(allCategoriesProvider);
+    final picked = await showCategoryPicker(
+      context,
+      categories: categories,
+      selected: state.category,
+    );
+    if (picked != null) {
+      ref.read(quickAddProvider.notifier).setCategory(picked);
+      _updateLiveActivity(ref);
+    }
+  }
+
   void _updateLiveActivity(WidgetRef ref) {
     if (!Platform.isIOS) return;
     final state = ref.read(quickAddProvider);
@@ -235,59 +275,66 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
   }
 }
 
-// ─── Type toggle ─────────────────────────────────────────────────────────────
+// ─── Type tabs ───────────────────────────────────────────────────────────────
 
-class _TypeToggle extends StatelessWidget {
+class _TypeTabs extends StatelessWidget {
   final TransactionType selected;
   final ValueChanged<TransactionType> onChanged;
 
-  const _TypeToggle({required this.selected, required this.onChanged});
+  const _TypeTabs({required this.selected, required this.onChanged});
+
+  static Color _color(TransactionType t, ColorScheme cs) => switch (t) {
+    TransactionType.expense  => cs.error,
+    TransactionType.income   => const Color(0xFF4CAF50),
+    TransactionType.transfer => const Color(0xFF2196F3),
+  };
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 34,
-      decoration: BoxDecoration(
-        color: colorScheme.onSurface.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: TransactionType.values.map((type) {
-          final isSelected = type == selected;
-          final color = type == TransactionType.income
-              ? const Color(0xFF4CAF50)
-              : colorScheme.error;
-          return GestureDetector(
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: TransactionType.values.map((type) {
+        final active = type == selected;
+        final color = _color(type, cs);
+        return Expanded(
+          child: GestureDetector(
             onTap: () {
               HapticFeedback.selectionClick();
               onChanged(type);
             },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              height: 34,
-              decoration: BoxDecoration(
-                color: isSelected ? color : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Center(
-                child: Text(
-                  type.label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected
-                        ? Colors.white
-                        : colorScheme.onSurface.withValues(alpha: 0.5),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                      color: active ? color : cs.onSurface.withValues(alpha: 0.35),
+                    ),
+                    child: Text(type.label, textAlign: TextAlign.center),
                   ),
                 ),
-              ),
+                Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    height: 2.5,
+                    width: active ? 28.0 : 0.0,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          );
-        }).toList(),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

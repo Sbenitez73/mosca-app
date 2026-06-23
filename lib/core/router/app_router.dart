@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/budgets/presentation/screens/budgets_screen.dart';
+import '../../features/recurring/presentation/screens/recurring_screen.dart';
 import '../../features/expenses/data/models/expense.dart';
 import '../../features/expenses/presentation/providers/expenses_provider.dart';
 import '../../features/expenses/presentation/screens/home_screen.dart';
@@ -37,6 +39,14 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/categories',
           builder: (context, state) => const ManageCategoriesScreen(),
+        ),
+        GoRoute(
+          path: '/budgets',
+          builder: (context, state) => const BudgetsScreen(),
+        ),
+        GoRoute(
+          path: '/recurring',
+          builder: (context, state) => const RecurringScreen(),
         ),
       ],
     ),
@@ -83,7 +93,7 @@ class _Shell extends ConsumerWidget {
     return idx < 0 ? 0 : idx;
   }
 
-  static const _noFabRoutes = {'/settings', '/categories'};
+  static const _noFabRoutes = {'/settings', '/categories', '/budgets', '/recurring'};
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -99,7 +109,7 @@ class _Shell extends ConsumerWidget {
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Gasto'),
+              label: const Text('Agregar'),
               elevation: 2,
             )
           : null,

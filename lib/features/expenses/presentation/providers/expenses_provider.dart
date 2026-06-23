@@ -94,6 +94,32 @@ final yearlyIncomesProvider = FutureProvider<List<Expense>>((ref) {
       );
 });
 
+// ─── Stats: month-navigable family providers ──────────────────────────────────
+
+final monthExpensesProvider = StreamProvider.autoDispose
+    .family<List<Expense>, (int, int)>((ref, ym) {
+  return ref
+      .watch(expenseRepositoryProvider)
+      .watchMonth(ym.$1, ym.$2, type: TransactionType.expense);
+});
+
+final monthIncomesProvider = StreamProvider.autoDispose
+    .family<List<Expense>, (int, int)>((ref, ym) {
+  return ref
+      .watch(expenseRepositoryProvider)
+      .watchMonth(ym.$1, ym.$2, type: TransactionType.income);
+});
+
+typedef _YearlyStats = ({List<Expense> expenses, List<Expense> incomes});
+
+final yearlyStatsProvider = FutureProvider.autoDispose
+    .family<_YearlyStats, int>((ref, year) async {
+  final repo = ref.watch(expenseRepositoryProvider);
+  final expenses = await repo.getForStats(year, type: TransactionType.expense);
+  final incomes  = await repo.getForStats(year, type: TransactionType.income);
+  return (expenses: expenses, incomes: incomes);
+});
+
 // ─── Categories ───────────────────────────────────────────────────────────────
 
 final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {

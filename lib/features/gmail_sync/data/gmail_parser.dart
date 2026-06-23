@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../features/expenses/data/models/transaction_type.dart';
 
 class ParsedTransaction {
   final double amount;
@@ -8,6 +9,7 @@ class ParsedTransaction {
   final String? cardLastFour;
   final DateTime date;
   final String gmailMessageId;
+  final TransactionType transactionType;
 
   const ParsedTransaction({
     required this.amount,
@@ -17,6 +19,7 @@ class ParsedTransaction {
     this.cardLastFour,
     required this.date,
     required this.gmailMessageId,
+    this.transactionType = TransactionType.expense,
   });
 }
 
@@ -37,7 +40,9 @@ class GmailParser {
     final result  = _parseAmount(content, bank);
     if (result == null) return null;
 
-    final transaction = ParsedTransaction(
+    final isWithdrawal = _isWithdrawal(subject, body);
+
+    return ParsedTransaction(
       amount: result.amount,
       currency: result.currency,
       merchant: _parseMerchant(content, bank),
@@ -45,9 +50,8 @@ class GmailParser {
       bankName: bank,
       date: _parseEmailDate(dateStr),
       gmailMessageId: messageId,
+      transactionType: isWithdrawal ? TransactionType.transfer : TransactionType.expense,
     );
-
-    return transaction;
   }
 
   // ─── Bank detection ──────────────────────────────────────────────────────────
@@ -108,9 +112,23 @@ class GmailParser {
     'se realizó el cobro',
   ];
 
+  // Cash withdrawals — valid transactions but classified as transfer, not expense
+  static const _withdrawalKeywords = [
+    'retiraste',
+    'retiro de',
+    'retiro en cajero',
+    'avance en cajero',
+  ];
+
   static bool _isDebitTransaction(String subject, String body, String bank) {
     final content = '${subject.toLowerCase()} ${body.toLowerCase()}';
-    return _transactionKeywords.any((k) => content.contains(k));
+    return _transactionKeywords.any((k) => content.contains(k)) ||
+        _withdrawalKeywords.any((k) => content.contains(k));
+  }
+
+  static bool _isWithdrawal(String subject, String body) {
+    final content = '${subject.toLowerCase()} ${body.toLowerCase()}';
+    return _withdrawalKeywords.any((k) => content.contains(k));
   }
 
   // ─── Amount parsing ──────────────────────────────────────────────────────────

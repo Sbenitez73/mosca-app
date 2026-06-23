@@ -11,7 +11,7 @@ class DatabaseService {
 
     _db = await openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
@@ -53,6 +53,26 @@ class DatabaseService {
         color_value INTEGER NOT NULL
       )
     ''');
+    await db.execute('''
+      CREATE TABLE budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category_key TEXT NOT NULL UNIQUE,
+        amount_limit REAL NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE recurring_expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'COP',
+        category TEXT NOT NULL,
+        description TEXT NOT NULL,
+        notes TEXT,
+        day_of_month INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT 'expense',
+        last_generated_at INTEGER
+      )
+    ''');
   }
 
   Future<void> _onOpen(Database db) async {
@@ -90,6 +110,30 @@ class DatabaseService {
       await db.execute(
         "ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
       );
+    }
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS budgets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          category_key TEXT NOT NULL UNIQUE,
+          amount_limit REAL NOT NULL
+        )
+      ''');
+    }
+    if (oldVersion < 7) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS recurring_expenses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          amount REAL NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'COP',
+          category TEXT NOT NULL,
+          description TEXT NOT NULL,
+          notes TEXT,
+          day_of_month INTEGER NOT NULL,
+          type TEXT NOT NULL DEFAULT 'expense',
+          last_generated_at INTEGER
+        )
+      ''');
     }
   }
 

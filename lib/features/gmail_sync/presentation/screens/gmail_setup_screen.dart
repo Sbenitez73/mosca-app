@@ -89,6 +89,48 @@ class GmailSetupScreen extends ConsumerWidget {
 
           const SizedBox(height: 16),
 
+          // ── Budgets ───────────────────────────────────────────────────
+          Card(
+            child: ListTile(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.savings_rounded, color: Colors.green.shade600),
+              ),
+              title: const Text('Presupuestos'),
+              subtitle: const Text('Límites mensuales por categoría'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.push('/budgets'),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Recurring expenses ────────────────────────────────────────
+          Card(
+            child: ListTile(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.repeat_rounded, color: Colors.blue.shade600),
+              ),
+              title: const Text('Gastos Recurrentes'),
+              subtitle: const Text('Se registran automáticamente cada mes'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.push('/recurring'),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
           // ── Supported banks ───────────────────────────────────────────
           Card(
             child: Padding(

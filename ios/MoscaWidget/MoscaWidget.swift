@@ -138,11 +138,193 @@ struct MoscaMediumWidget: Widget {
     }
 }
 
+// ── Balance widget ────────────────────────────────────────────────────────────
+
+struct MoscaBalanceEntry: TimelineEntry {
+    let date: Date
+    let expenses: Double
+    let incomes: Double
+    let balance: Double
+    let monthName: String
+}
+
+struct MoscaBalanceProvider: TimelineProvider {
+    private func readData() -> MoscaBalanceEntry {
+        let ud = UserDefaults(suiteName: "group.com.mosca.mosca")
+        return MoscaBalanceEntry(
+            date: Date(),
+            expenses:  ud?.double(forKey: "expenses")  ?? 0,
+            incomes:   ud?.double(forKey: "incomes")   ?? 0,
+            balance:   ud?.double(forKey: "balance")   ?? 0,
+            monthName: ud?.string(forKey: "month_name") ?? "Este mes"
+        )
+    }
+
+    func placeholder(in context: Context) -> MoscaBalanceEntry {
+        MoscaBalanceEntry(date: Date(), expenses: 1_200_000, incomes: 3_000_000, balance: 1_800_000, monthName: "Junio")
+    }
+    func getSnapshot(in context: Context, completion: @escaping (MoscaBalanceEntry) -> Void) {
+        completion(readData())
+    }
+    func getTimeline(in context: Context, completion: @escaping (Timeline<MoscaBalanceEntry>) -> Void) {
+        let next = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
+        completion(Timeline(entries: [readData()], policy: .after(next)))
+    }
+}
+
+private func formatCOP(_ value: Double) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.groupingSeparator = "."
+    formatter.maximumFractionDigits = 0
+    return "$ \(formatter.string(from: NSNumber(value: value)) ?? "0")"
+}
+
+private struct MoscaBalanceSmallView: View {
+    let entry: MoscaBalanceEntry
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [emerald, emeraldDark],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image("MoscaIcon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 18, height: 18)
+                    Text("Mosca")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.75))
+                }
+                Spacer()
+                Text(entry.monthName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Text(formatCOP(entry.balance))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(entry.balance >= 0 ? .white : Color(red: 1, green: 0.4, blue: 0.4))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("balance")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct MoscaBalanceMediumView: View {
+    let entry: MoscaBalanceEntry
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [emerald, emeraldDark],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(alignment: .leading, spacing: 10) {
+                // Header
+                HStack {
+                    HStack(spacing: 6) {
+                        Image("MoscaIcon")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 20, height: 20)
+                        Text("Mosca")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    Spacer()
+                    Text(entry.monthName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.65))
+                }
+
+                // Balance
+                Text(formatCOP(entry.balance))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(entry.balance >= 0 ? .white : Color(red: 1, green: 0.4, blue: 0.4))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+
+                // Expenses / Incomes row
+                HStack(spacing: 0) {
+                    _MetricPill(label: "Gastos", value: formatCOP(entry.expenses), color: Color(red: 1, green: 0.4, blue: 0.4))
+                    Spacer()
+                    _MetricPill(label: "Ingresos", value: formatCOP(entry.incomes), color: Color(red: 0.4, green: 0.87, blue: 0.55))
+                }
+            }
+            .padding(16)
+        }
+    }
+}
+
+private struct _MetricPill: View {
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.white.opacity(0.55))
+            Text(value)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(color)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct MoscaBalanceEntryView: View {
+    @Environment(\.widgetFamily) var family
+    let entry: MoscaBalanceEntry
+
+    var body: some View {
+        switch family {
+        case .systemMedium:
+            MoscaBalanceMediumView(entry: entry)
+        default:
+            MoscaBalanceSmallView(entry: entry)
+        }
+    }
+}
+
+struct MoscaBalanceWidget: Widget {
+    let kind = "MoscaBalanceWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: MoscaBalanceProvider()) { entry in
+            MoscaBalanceEntryView(entry: entry)
+                .widgetBackgroundGradient(
+                    LinearGradient(
+                        colors: [emerald, emeraldDark],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .configurationDisplayName("Balance del mes")
+        .description("Ve tus gastos, ingresos y balance del mes en curso.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
 // ── Bundle ────────────────────────────────────────────────────────────────────
 @main
 struct MoscaWidgetBundle: WidgetBundle {
     var body: some Widget {
         MoscaSmallWidget()
         MoscaMediumWidget()
+        MoscaBalanceWidget()
     }
 }

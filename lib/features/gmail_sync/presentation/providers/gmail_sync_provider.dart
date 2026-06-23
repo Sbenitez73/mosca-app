@@ -151,6 +151,7 @@ class GmailSyncNotifier extends Notifier<GmailSyncState> {
           date: parsed.date,
           source: ExpenseSource.gmail,
           gmailMessageId: parsed.gmailMessageId,
+          type: parsed.transactionType,
         );
 
         await repo.save(expense);

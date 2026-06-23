@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../../data/models/expense.dart';
+import '../../data/models/transaction_type.dart';
 import '../providers/expenses_provider.dart';
 import '../widgets/expense_card.dart';
 
@@ -17,7 +18,7 @@ class ExpenseListScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Todos los gastos'),
+        title: const Text('Historial'),
         actions: [
           IconButton(
             icon: const Icon(Icons.search_rounded),
@@ -89,7 +90,7 @@ class ExpenseListScreen extends ConsumerWidget {
                         return Dismissible(
                           key: ValueKey(expense.id ?? expense.gmailMessageId),
                           direction: DismissDirection.endToStart,
-                          confirmDismiss: (_) => _confirmDelete(context, ref, expense.id),
+                          confirmDismiss: (_) => _confirmDelete(context, ref, expense),
                           background: Container(
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 20),
@@ -122,13 +123,18 @@ class ExpenseListScreen extends ConsumerWidget {
     );
   }
 
-  Future<bool> _confirmDelete(BuildContext context, WidgetRef ref, int? id) async {
-    if (id == null) return false;
+  Future<bool> _confirmDelete(BuildContext context, WidgetRef ref, Expense expense) async {
+    if (expense.id == null) return false;
+    final label = switch (expense.type) {
+      TransactionType.income   => 'ingreso',
+      TransactionType.transfer => 'movimiento',
+      TransactionType.expense  => 'gasto',
+    };
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('Eliminar gasto'),
-        content: const Text('¿Seguro que quieres eliminar este gasto?'),
+        title: Text('Eliminar $label'),
+        content: Text('¿Seguro que quieres eliminar este $label?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx, false),
@@ -142,7 +148,7 @@ class ExpenseListScreen extends ConsumerWidget {
       ),
     );
     if (confirmed == true) {
-      await ref.read(expenseRepositoryProvider).delete(id);
+      await ref.read(expenseRepositoryProvider).delete(expense.id!);
       return true;
     }
     return false;
@@ -169,7 +175,8 @@ class _ExpenseSearchDelegate extends SearchDelegate<void> {
     return expenses.where((e) {
       return e.description.toLowerCase().contains(q) ||
           (e.merchantName?.toLowerCase().contains(q) ?? false) ||
-          e.category.label.toLowerCase().contains(q);
+          e.category.label.toLowerCase().contains(q) ||
+          e.amount.toInt().toString().contains(q);
     }).toList();
   }
 

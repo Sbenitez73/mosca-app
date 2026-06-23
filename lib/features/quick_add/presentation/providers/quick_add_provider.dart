@@ -31,7 +31,9 @@ class QuickAddState {
     return double.tryParse(amountBuffer.replaceAll(',', ''));
   }
 
-  bool get isValid => parsedAmount != null && parsedAmount! > 0 && category != null;
+  // Transfers don't need a category — we auto-assign one on save
+  bool get isValid => parsedAmount != null && parsedAmount! > 0 &&
+      (category != null || type == TransactionType.transfer);
 
   QuickAddState copyWith({
     TransactionType? type,
@@ -112,11 +114,12 @@ class QuickAddNotifier extends Notifier<QuickAddState> {
     state = state.copyWith(isSaving: true);
     try {
       final title = state.title.trim();
+      final category = state.category ?? ExpenseCategory.other;
       final expense = Expense(
         amount: state.parsedAmount!,
         currency: currency,
-        category: state.category!,
-        description: title.isEmpty ? state.category!.label : title,
+        category: category,
+        description: title.isEmpty ? category.label : title,
         notes: state.notes.trim().isEmpty ? null : state.notes.trim(),
         date: state.date,
         source: ExpenseSource.manual,

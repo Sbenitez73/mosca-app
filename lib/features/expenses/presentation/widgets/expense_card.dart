@@ -4,6 +4,7 @@ import '../../../../core/utils/date_formatter.dart';
 import '../../../../shared/widgets/category_badge.dart';
 import '../../data/models/expense.dart';
 import '../../data/models/expense_source.dart';
+import '../../data/models/transaction_type.dart';
 
 class ExpenseCard extends StatelessWidget {
   final Expense expense;
@@ -17,10 +18,14 @@ class ExpenseCard extends StatelessWidget {
     this.onDelete,
   });
 
+  static const _transferColor = Color(0xFF2196F3);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isTransfer = expense.type == TransactionType.transfer;
+    final isIncome = expense.type == TransactionType.income;
 
     return InkWell(
       onTap: onTap,
@@ -29,7 +34,19 @@ class ExpenseCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            CategoryBadge(category: expense.category),
+            if (isTransfer)
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _transferColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.swap_horiz_rounded,
+                    color: _transferColor, size: 22),
+              )
+            else
+              CategoryBadge(category: expense.category),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -50,17 +67,14 @@ class ExpenseCard extends StatelessWidget {
                       if (expense.source == ExpenseSource.gmail)
                         Padding(
                           padding: const EdgeInsets.only(left: 4),
-                          child: Icon(
-                            Icons.mark_email_read_rounded,
-                            size: 14,
-                            color: colorScheme.secondary,
-                          ),
+                          child: Icon(Icons.mark_email_read_rounded,
+                              size: 14, color: colorScheme.secondary),
                         ),
                     ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _subtitle,
+                    isTransfer ? _transferSubtitle : _subtitle,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                     ),
@@ -75,10 +89,15 @@ class ExpenseCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  CurrencyFormatter.format(expense.amount, currency: expense.currency),
+                  CurrencyFormatter.format(expense.amount,
+                      currency: expense.currency),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
+                    color: isTransfer
+                        ? _transferColor
+                        : isIncome
+                            ? const Color(0xFF4CAF50)
+                            : colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -101,6 +120,12 @@ class ExpenseCard extends StatelessWidget {
     if (expense.bankName != null) parts.add(expense.bankName!);
     if (expense.cardLastFour != null) parts.add('••••${expense.cardLastFour}');
     if (parts.isEmpty) parts.add(expense.category.label);
+    return parts.join(' · ');
+  }
+
+  String get _transferSubtitle {
+    final parts = <String>['Movimiento'];
+    if (expense.bankName != null) parts.add(expense.bankName!);
     return parts.join(' · ');
   }
 }

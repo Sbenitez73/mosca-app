@@ -172,7 +172,7 @@ class GmailSetupScreen extends ConsumerWidget {
   static const _banks = [
     'Bancolombia',
     'Nequi',
-    'Davivienda',
+    'Davivienda / DAVIbank',
     'Nubank (Colombia & Brasil)',
     'BBVA',
     'Falabella / CMR',

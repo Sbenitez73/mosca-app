@@ -30,6 +30,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(quickAddProvider);
+    final allCategories = ref.watch(allCategoriesProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -158,7 +159,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                     ),
                   )
                 : GestureDetector(
-                    onTap: () => _pickCategory(context, ref, state),
+                    onTap: () => _pickCategory(context, ref, state, allCategories),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
@@ -235,11 +236,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
     );
   }
 
-  Future<void> _pickCategory(BuildContext context, WidgetRef ref, QuickAddState state) async {
+  Future<void> _pickCategory(BuildContext context, WidgetRef ref, QuickAddState state, List<ExpenseCategory> expenseCategories) async {
     HapticFeedback.selectionClick();
     final categories = state.type == TransactionType.income
         ? ExpenseCategory.incomeBuiltins
-        : ref.read(allCategoriesProvider);
+        : expenseCategories;
     final picked = await showCategoryPicker(
       context,
       categories: categories,

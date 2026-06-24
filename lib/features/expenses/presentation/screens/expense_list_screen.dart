@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/utils/currency_formatter.dart';
@@ -90,15 +91,26 @@ class ExpenseListScreen extends ConsumerWidget {
                         return Dismissible(
                           key: ValueKey(expense.id ?? expense.gmailMessageId),
                           direction: DismissDirection.endToStart,
-                          confirmDismiss: (_) => _confirmDelete(context, ref, expense),
+                          onDismissed: (_) => _deleteWithUndo(context, ref, expense),
                           background: Container(
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 20),
                             decoration: BoxDecoration(
-                              color: Colors.red,
+                              color: Theme.of(context).colorScheme.error,
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Icon(Icons.delete_rounded, color: Colors.white),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.delete_rounded, color: Colors.white, size: 22),
+                                const SizedBox(height: 4),
+                                Text('Eliminar',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
                           ),
                           child: Column(
                             children: [
@@ -123,35 +135,30 @@ class ExpenseListScreen extends ConsumerWidget {
     );
   }
 
-  Future<bool> _confirmDelete(BuildContext context, WidgetRef ref, Expense expense) async {
-    if (expense.id == null) return false;
+  void _deleteWithUndo(BuildContext context, WidgetRef ref, Expense expense) {
+    if (expense.id == null) return;
+    HapticFeedback.mediumImpact();
+    ref.read(expenseRepositoryProvider).delete(expense.id!);
+
     final label = switch (expense.type) {
-      TransactionType.income   => 'ingreso',
-      TransactionType.transfer => 'movimiento',
-      TransactionType.expense  => 'gasto',
+      TransactionType.income   => 'Ingreso',
+      TransactionType.transfer => 'Movimiento',
+      TransactionType.expense  => 'Gasto',
     };
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Text('Eliminar $label'),
-        content: Text('¿Seguro que quieres eliminar este $label?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('Cancelar'),
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$label eliminado'),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Deshacer',
+            onPressed: () => ref
+                .read(expenseRepositoryProvider)
+                .save(expense.copyWith(id: null)),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(expenseRepositoryProvider).delete(expense.id!);
-      return true;
-    }
-    return false;
+        ),
+      );
   }
 
   String _capitalize(String s) =>

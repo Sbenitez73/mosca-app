@@ -19,11 +19,13 @@ abstract class DateFormatter {
 
   static String relative(DateTime date) {
     final now = DateTime.now();
-    final diff = now.difference(date);
+    final today = DateTime(now.year, now.month, now.day);
+    final dateDay = DateTime(date.year, date.month, date.day);
+    final diffDays = today.difference(dateDay).inDays;
 
-    if (diff.inDays == 0) return 'Hoy ${_time.format(date)}';
-    if (diff.inDays == 1) return 'Ayer ${_time.format(date)}';
-    if (diff.inDays < 7) return _dayMonth.format(date);
+    if (diffDays == 0) return 'Hoy ${_time.format(date)}';
+    if (diffDays == 1) return 'Ayer ${_time.format(date)}';
+    if (diffDays < 7) return _dayMonth.format(date);
     return _dayMonthYear.format(date);
   }
 

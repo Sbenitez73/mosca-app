@@ -278,6 +278,9 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
     final cs = theme.colorScheme;
     final bottomPad = MediaQuery.of(context).viewInsets.bottom;
 
+    // Watch here so customCategoriesProvider is subscribed before the user taps
+    final allCategories = ref.watch(allCategoriesProvider);
+
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
@@ -329,10 +332,9 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
           else
             GestureDetector(
               onTap: () async {
-                final categories = ref.read(allCategoriesProvider);
                 final picked = await showCategoryPicker(
                   context,
-                  categories: categories,
+                  categories: allCategories,
                   selected: _category,
                 );
                 if (picked != null) setState(() => _category = picked);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../core/utils/date_formatter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../expenses/data/models/expense_category.dart';
@@ -49,9 +50,18 @@ class RecurringScreen extends ConsumerWidget {
                       ),
                       child: const Icon(Icons.delete_rounded, color: Colors.white),
                     ),
-                    confirmDismiss: (_) => _confirmDelete(context, item.description),
-                    onDismissed: (_) =>
-                        ref.read(recurringRepositoryProvider).delete(item.id!),
+                    onDismissed: (_) {
+                      HapticFeedback.mediumImpact();
+                      ref.read(recurringRepositoryProvider).delete(item.id!);
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          const SnackBar(
+                            content: Text('Recurrente eliminado'),
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                    },
                     child: _RecurringCard(
                       item: item,
                       onTap: () => _openForm(context, existing: item),
@@ -59,25 +69,6 @@ class RecurringScreen extends ConsumerWidget {
                   );
                 },
               ),
-      ),
-    );
-  }
-
-  Future<bool?> _confirmDelete(BuildContext context, String name) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar recurrente'),
-        content: Text('¿Eliminar "$name" de los gastos recurrentes?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
     );
   }
@@ -142,6 +133,14 @@ class _RecurringCard extends StatelessWidget {
                       'Cada mes el día ${item.dayOfMonth}',
                       style: theme.textTheme.bodySmall?.copyWith(
                           color: cs.onSurface.withValues(alpha: 0.5)),
+                    ),
+                    Text(
+                      item.lastGeneratedAt != null
+                          ? 'Último: ${DateFormatter.relative(item.lastGeneratedAt!)}'
+                          : 'Nunca registrado',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.35),
+                          fontSize: 11),
                     ),
                   ],
                 ),

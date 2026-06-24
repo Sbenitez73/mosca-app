@@ -59,7 +59,7 @@ class GmailParser {
   static const _bankDomains = {
     'Bancolombia': ['bancolombia.com'],
     'Nequi':       ['nequi.com.co', 'nequi'],
-    'Davivienda':  ['davivienda.com'],
+    'Davivienda':  ['davivienda.com', 'davibank.com'],
     'Nubank':      ['nubank.com.br', 'nu.com.co'],
     'BBVA':        ['bbva.com.co', 'bbva.com'],
     'Falabella':   ['falabella.com', 'cmr'],
@@ -110,6 +110,8 @@ class GmailParser {
     // Generic charge notice
     'cobro de',
     'se realizó el cobro',
+    // DAVIbank credit card
+    'realizaste con tu tarjeta',
   ];
 
   // Cash withdrawals — valid transactions but classified as transfer, not expense
@@ -138,6 +140,8 @@ class GmailParser {
       RegExp(r'\$([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)'),
       // Nequi Bre-B and similar: "Enviaste de manera exitosa 20.000 a"
       RegExp(r'(?:enviaste|transferiste)\s+(?:de\s+manera\s+exitosa\s+)?([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', caseSensitive: false),
+      // DAVIbank: "Monto    71,978" (no currency symbol, tabs/spaces as separator)
+      RegExp(r'monto\s+([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', caseSensitive: false),
     ];
 
     for (final pattern in copPatterns) {
@@ -201,8 +205,9 @@ class GmailParser {
   static final _merchantPatterns = [
     // "en CC_VICTOPZ2 de tu" / "en Rappi con Tarj"
     RegExp(r'en\s+([A-Z][A-Za-z0-9\s&.,_\-]{2,40}?)(?:\s+de\s+tu|\s+con\s+|\s+Tarj|\.|$)', multiLine: true),
-    RegExp(r'comercio[:\s]+([A-Za-z0-9\s&.,_\-]{2,40})', caseSensitive: false),
-    RegExp(r'establecimiento[:\s]+([A-Za-z0-9\s&.,_\-]{2,40})', caseSensitive: false),
+    // DAVIbank / generic: "Comercio    ANTHROPIC* CLAUDE SUB" (tabs, no colon, asterisks)
+    RegExp(r'comercio\s+([A-Za-z0-9*\s&.,_\-]{2,50}?)(?:\n|$)', caseSensitive: false, multiLine: true),
+    RegExp(r'establecimiento[:\s]+([A-Za-z0-9*\s&.,_\-]{2,50})', caseSensitive: false),
   ];
 
   static String? _parseMerchant(String content, String bank) {

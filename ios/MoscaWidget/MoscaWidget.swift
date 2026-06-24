@@ -183,6 +183,8 @@ private func formatCOP(_ value: Double) -> String {
 private struct MoscaBalanceSmallView: View {
     let entry: MoscaBalanceEntry
 
+    private var hasData: Bool { entry.expenses > 0 || entry.incomes > 0 }
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -190,31 +192,46 @@ private struct MoscaBalanceSmallView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+            if hasData {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image("MoscaIcon")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 18, height: 18)
+                        Text("Mosca")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    Spacer()
+                    Text(entry.monthName)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                    Text(formatCOP(entry.balance))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(entry.balance >= 0 ? .white : Color(red: 1, green: 0.4, blue: 0.4))
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                    Text("balance")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(spacing: 8) {
                     Image("MoscaIcon")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
-                    Text("Mosca")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .frame(width: 32, height: 32)
+                    Text("Abrí Mosca\npara ver tu balance")
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
                 }
-                Spacer()
-                Text(entry.monthName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                Text(formatCOP(entry.balance))
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(entry.balance >= 0 ? .white : Color(red: 1, green: 0.4, blue: 0.4))
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-                Text("balance")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.white.opacity(0.55))
+                .padding(12)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -222,6 +239,8 @@ private struct MoscaBalanceSmallView: View {
 private struct MoscaBalanceMediumView: View {
     let entry: MoscaBalanceEntry
 
+    private var hasData: Bool { entry.expenses > 0 || entry.incomes > 0 }
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -229,39 +248,58 @@ private struct MoscaBalanceMediumView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            VStack(alignment: .leading, spacing: 10) {
-                // Header
-                HStack {
-                    HStack(spacing: 6) {
-                        Image("MoscaIcon")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 20, height: 20)
-                        Text("Mosca")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
+            if hasData {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Header
+                    HStack {
+                        HStack(spacing: 6) {
+                            Image("MoscaIcon")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 20, height: 20)
+                            Text("Mosca")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                        }
+                        Spacer()
+                        Text(entry.monthName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.65))
                     }
-                    Spacer()
-                    Text(entry.monthName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.65))
-                }
 
-                // Balance
-                Text(formatCOP(entry.balance))
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(entry.balance >= 0 ? .white : Color(red: 1, green: 0.4, blue: 0.4))
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
+                    // Balance
+                    Text(formatCOP(entry.balance))
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundColor(entry.balance >= 0 ? .white : Color(red: 1, green: 0.4, blue: 0.4))
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
 
-                // Expenses / Incomes row
-                HStack(spacing: 0) {
-                    _MetricPill(label: "Gastos", value: formatCOP(entry.expenses), color: Color(red: 1, green: 0.4, blue: 0.4))
-                    Spacer()
-                    _MetricPill(label: "Ingresos", value: formatCOP(entry.incomes), color: Color(red: 0.4, green: 0.87, blue: 0.55))
+                    // Expenses / Incomes row
+                    HStack(spacing: 0) {
+                        _MetricPill(label: "Gastos", value: formatCOP(entry.expenses), color: Color(red: 1, green: 0.4, blue: 0.4))
+                        Spacer()
+                        _MetricPill(label: "Ingresos", value: formatCOP(entry.incomes), color: Color(red: 0.4, green: 0.87, blue: 0.55))
+                    }
                 }
+                .padding(16)
+            } else {
+                HStack(spacing: 16) {
+                    Image("MoscaIcon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Mosca")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                        Text("Abrí la app para ver\ntu balance del mes")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineSpacing(2)
+                    }
+                }
+                .padding(16)
             }
-            .padding(16)
         }
     }
 }

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../../expenses/data/models/expense.dart';
 import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
+import '../../../expenses/presentation/widgets/expense_card.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
@@ -127,7 +129,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                 children: [
                   _PieSection(totals: totals, total: total),
                   const SizedBox(height: 20),
-                  _CategoryList(totals: totals, total: total),
+                  _CategoryList(totals: totals, total: total, expenses: expenses),
                 ],
               );
             },
@@ -406,7 +408,22 @@ class _PieSection extends StatelessWidget {
 class _CategoryList extends StatelessWidget {
   final Map<String, double> totals;
   final double total;
-  const _CategoryList({required this.totals, required this.total});
+  final List<dynamic> expenses;
+  const _CategoryList({required this.totals, required this.total, required this.expenses});
+
+  void _showCategorySheet(BuildContext context, ExpenseCategory cat) {
+    final catExpenses = (expenses as List<Expense>)
+        .where((e) => e.category.key == cat.key)
+        .toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CategoryExpensesSheet(category: cat, expenses: catExpenses),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -418,41 +435,133 @@ class _CategoryList extends StatelessWidget {
       children: sorted.map((e) {
         final cat = ExpenseCategory.fromKey(e.key);
         final pct = e.value / total;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Container(
-                  width: 10, height: 10,
-                  decoration:
-                      BoxDecoration(color: cat.color, shape: BoxShape.circle)),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: Text(cat.label, style: theme.textTheme.bodyMedium)),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(CurrencyFormatter.format(e.value),
-                      style: theme.textTheme.labelLarge),
-                  SizedBox(
-                    width: 80,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: pct,
-                        backgroundColor: cat.color.withValues(alpha: 0.15),
-                        valueColor: AlwaysStoppedAnimation(cat.color),
-                        minHeight: 4,
+        return InkWell(
+          onTap: () => _showCategorySheet(context, cat),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              children: [
+                Container(
+                    width: 10, height: 10,
+                    decoration:
+                        BoxDecoration(color: cat.color, shape: BoxShape.circle)),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text(cat.label, style: theme.textTheme.bodyMedium)),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(CurrencyFormatter.format(e.value),
+                        style: theme.textTheme.labelLarge),
+                    SizedBox(
+                      width: 80,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: pct,
+                          backgroundColor: cat.color.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation(cat.color),
+                          minHeight: 4,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded,
+                    size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.25)),
+              ],
+            ),
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ─── Category expenses sheet ──────────────────────────────────────────────────
+
+class _CategoryExpensesSheet extends StatelessWidget {
+  final ExpenseCategory category;
+  final List<Expense> expenses;
+
+  const _CategoryExpensesSheet({required this.category, required this.expenses});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final total = expenses.fold(0.0, (s, e) => s + e.amount);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+              color: cs.onSurface.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: category.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(category.icon, size: 20, color: category.color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(category.label,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                Text(CurrencyFormatter.format(total),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700, color: category.color)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          Flexible(
+            child: expenses.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text('Sin gastos en esta categoría',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cs.onSurface.withValues(alpha: 0.4))),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 24),
+                    itemCount: expenses.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, indent: 68),
+                    itemBuilder: (context, i) =>
+                        ExpenseCard(expense: expenses[i]),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -5,7 +5,11 @@ import '../../expenses/presentation/providers/expenses_provider.dart';
 import '../presentation/providers/recurring_provider.dart';
 
 class RecurringService {
+  static const _tolerance = 0.10; // ±10%
+
   /// Generates due recurring expenses. Returns how many were created.
+  /// Skips generation if a matching expense already exists this month
+  /// (e.g. imported from Gmail) — same category, type, amount within ±10%.
   static Future<int> processRecurring(WidgetRef ref) async {
     final now = DateTime.now();
     final recurringRepo = ref.read(recurringRepositoryProvider);
@@ -23,11 +27,30 @@ class RecurringService {
       if (targetDate.isAfter(now)) continue;
 
       final last = t.lastGeneratedAt;
-      final alreadyGenerated = last != null &&
+      final alreadyProcessed = last != null &&
           (last.year > now.year ||
               (last.year == now.year && last.month >= now.month));
 
-      if (alreadyGenerated) continue;
+      if (alreadyProcessed) continue;
+
+      // Opción A: skip if a matching expense already exists this month
+      final minAmount = t.amount * (1 - _tolerance);
+      final maxAmount = t.amount * (1 + _tolerance);
+      final alreadyExists = await expenseRepo.existsInMonth(
+        now.year,
+        now.month,
+        categoryKey: t.category.key,
+        type: t.type,
+        minAmount: minAmount,
+        maxAmount: maxAmount,
+      );
+
+      // Whether we created it or found it via Gmail, mark month as processed
+      if (t.id != null) {
+        await recurringRepo.updateLastGenerated(t.id!, now);
+      }
+
+      if (alreadyExists) continue;
 
       await expenseRepo.save(Expense(
         amount: t.amount,
@@ -40,9 +63,6 @@ class RecurringService {
         type: t.type,
       ));
 
-      if (t.id != null) {
-        await recurringRepo.updateLastGenerated(t.id!, now);
-      }
       generated++;
     }
 

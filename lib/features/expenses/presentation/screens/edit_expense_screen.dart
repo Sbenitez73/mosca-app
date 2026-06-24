@@ -72,10 +72,10 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
     TransactionType.expense  => 'gasto',
   };
 
-  Future<void> _pickCategory(BuildContext context) async {
+  Future<void> _pickCategory(BuildContext context, List<ExpenseCategory> expenseCategories) async {
     final categories = widget.expense.type == TransactionType.income
         ? ExpenseCategory.incomeBuiltins
-        : ref.read(allCategoriesProvider);
+        : expenseCategories;
     final picked = await showCategoryPicker(
       context,
       categories: categories,
@@ -103,6 +103,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
       ),
     );
     if (confirmed == true && widget.expense.id != null) {
+      HapticFeedback.mediumImpact();
       await ref.read(expenseRepositoryProvider).delete(widget.expense.id!);
       // ignore: use_build_context_synchronously
       if (mounted) context.pop();
@@ -160,6 +161,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final allCategories = ref.watch(allCategoriesProvider);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -269,7 +271,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
             ),
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () => _pickCategory(context),
+              onTap: () => _pickCategory(context, allCategories),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                 decoration: BoxDecoration(

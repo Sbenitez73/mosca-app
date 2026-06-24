@@ -73,6 +73,27 @@ class SqfliteExpenseRepository implements ExpenseRepository {
   }
 
   @override
+  Future<bool> existsInMonth(
+    int year,
+    int month, {
+    required String categoryKey,
+    required TransactionType type,
+    required double minAmount,
+    required double maxAmount,
+  }) async {
+    final start = DateTime(year, month).millisecondsSinceEpoch;
+    final end = DateTime(year, month + 1).millisecondsSinceEpoch - 1;
+    final rows = await _db.query(
+      'expenses',
+      columns: ['COUNT(*) as cnt'],
+      where: 'date BETWEEN ? AND ? AND category = ? AND type = ? AND amount BETWEEN ? AND ?',
+      whereArgs: [start, end, categoryKey, type.name, minAmount, maxAmount],
+    );
+    final count = rows.first['cnt'] as int? ?? 0;
+    return count > 0;
+  }
+
+  @override
   Future<List<Expense>> getForStats(int year, {TransactionType? type}) async {
     final start = DateTime(year).millisecondsSinceEpoch;
     final end = DateTime(year + 1).millisecondsSinceEpoch - 1;

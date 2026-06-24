@@ -8,4 +8,12 @@ abstract class ExpenseRepository {
   Future<void> delete(int id);
   Future<Expense?> findByGmailMessageId(String messageId);
   Future<List<Expense>> getForStats(int year, {TransactionType? type});
+  Future<bool> existsInMonth(
+    int year,
+    int month, {
+    required String categoryKey,
+    required TransactionType type,
+    required double minAmount,
+    required double maxAmount,
+  });
 }

@@ -32,36 +32,88 @@ class ManageCategoriesScreen extends ConsumerWidget {
       body: customAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (customs) => ListView(
-          padding: const EdgeInsets.only(bottom: 100),
-          children: [
-            // ── Custom categories ───────────────────────────────────────────
-            if (customs.isNotEmpty) ...[
-              _SectionLabel('Personalizadas'),
-              ...customs.map(
-                (cat) => ListTile(
-                  leading: _ColorDot(color: cat.color),
-                  title: Text(cat.label),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    color: theme.colorScheme.error,
-                    onPressed: () => _confirmDelete(context, ref, cat),
+        data: (customs) {
+          final expenseCustoms = customs.where((c) => !c.isIncome).toList();
+          final incomeCustoms  = customs.where((c) => c.isIncome).toList();
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 100),
+            children: [
+              // ── Custom expense categories ─────────────────────────────────
+              _SectionLabel('Personalizadas — Gastos'),
+              if (expenseCustoms.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Sin categorías personalizadas de gasto',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                )
+              else
+                ...expenseCustoms.map(
+                  (cat) => ListTile(
+                    leading: _ColorDot(color: cat.color),
+                    title: Text(cat.label),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      color: theme.colorScheme.error,
+                      onPressed: () => _confirmDelete(context, ref, cat),
+                    ),
                   ),
                 ),
-              ),
-              const Divider(height: 32),
-            ],
 
-            // ── Built-ins (read-only) ───────────────────────────────────────
-            _SectionLabel('Predeterminadas'),
-            ...ExpenseCategory.builtins.map(
-              (cat) => ListTile(
-                leading: _CategoryIcon(category: cat),
-                title: Text(cat.label),
+              const Divider(height: 32),
+
+              // ── Custom income categories ──────────────────────────────────
+              _SectionLabel('Personalizadas — Ingresos'),
+              if (incomeCustoms.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Sin categorías personalizadas de ingreso',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                )
+              else
+                ...incomeCustoms.map(
+                  (cat) => ListTile(
+                    leading: _ColorDot(color: cat.color),
+                    title: Text(cat.label),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      color: theme.colorScheme.error,
+                      onPressed: () => _confirmDelete(context, ref, cat),
+                    ),
+                  ),
+                ),
+
+              const Divider(height: 32),
+
+              // ── Built-ins expense (read-only) ─────────────────────────────
+              _SectionLabel('Predeterminadas — Gastos'),
+              ...ExpenseCategory.builtins.where((c) => !c.isIncome).map(
+                (cat) => ListTile(
+                  leading: _CategoryIcon(category: cat),
+                  title: Text(cat.label),
+                ),
               ),
-            ),
-          ],
-        ),
+
+              const Divider(height: 32),
+
+              // ── Built-ins income (read-only) ──────────────────────────────
+              _SectionLabel('Predeterminadas — Ingresos'),
+              ...ExpenseCategory.incomeBuiltins.map(
+                (cat) => ListTile(
+                  leading: _CategoryIcon(category: cat),
+                  title: Text(cat.label),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddDialog(context, ref),
@@ -128,6 +180,7 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
   final _controller = TextEditingController();
   Color _selected = const Color(0xFFE91E63);
   bool _saving = false;
+  bool _isIncome = false;
   String? _error;
 
   @override
@@ -155,6 +208,7 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
       key: key,
       label: label,
       color: _selected,
+      isIncome: _isIncome,
     );
     await widget.ref.read(categoryRepositoryProvider).save(cat);
     HapticFeedback.lightImpact();
@@ -173,7 +227,16 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Nueva categoría', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Gasto'), icon: Icon(Icons.trending_down_rounded)),
+              ButtonSegment(value: true,  label: Text('Ingreso'), icon: Icon(Icons.trending_up_rounded)),
+            ],
+            selected: {_isIncome},
+            onSelectionChanged: (v) => setState(() => _isIncome = v.first),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _controller,
             autofocus: true,

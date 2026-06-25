@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../../budgets/presentation/providers/budgets_provider.dart';
 import '../../../expenses/data/models/expense.dart';
 import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
@@ -17,6 +18,7 @@ class StatsScreen extends ConsumerStatefulWidget {
 
 class _StatsScreenState extends ConsumerState<StatsScreen> {
   late DateTime _month;
+  bool _showIncomeBreakdown = false;
 
   @override
   void initState() {
@@ -44,6 +46,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final incomesAsync  = ref.watch(monthIncomesProvider(ym));
     final yearlyAsync   = ref.watch(yearlyStatsProvider(_month.year));
     final prevExpensesAsync = ref.watch(monthExpensesProvider(prevYm));
+    final budgetStatuses = ref.watch(budgetStatusProvider);
+    final budgetLimits = {
+      for (final s in budgetStatuses) s.budget.category.key: s.budget.limit
+    };
 
     return Scaffold(
       appBar: AppBar(
@@ -90,24 +96,58 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               child: Center(child: CircularProgressIndicator()),
             ),
             error: (e, _) => Text('Error: $e'),
-            data: (stats) => _ComparisonChart(
-              year: _month.year,
-              highlightMonth: _month.month,
-              byMonthExpense: _aggregate(stats.expenses),
-              byMonthIncome: _aggregate(stats.incomes),
-            ),
+            data: (stats) {
+              final byExpense = _aggregate(stats.expenses);
+              final byIncome = _aggregate(stats.incomes);
+              return Column(
+                children: [
+                  _ComparisonChart(
+                    year: _month.year,
+                    highlightMonth: _month.month,
+                    byMonthExpense: byExpense,
+                    byMonthIncome: byIncome,
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Tendencia 6 meses', style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  _SpendingTrendChart(
+                    byMonthExpense: byExpense,
+                    byMonthIncome: byIncome,
+                    highlightMonth: _month.month,
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 28),
 
           // ── Category breakdown ──────────────────────────────────────────
-          Text('Por categoría', style: theme.textTheme.titleLarge),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Por categoría', style: theme.textTheme.titleLarge),
+              SegmentedButton<bool>(
+                style: SegmentedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  visualDensity: VisualDensity.compact,
+                ),
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Gastos')),
+                  ButtonSegment(value: true,  label: Text('Ingresos')),
+                ],
+                selected: {_showIncomeBreakdown},
+                onSelectionChanged: (v) =>
+                    setState(() => _showIncomeBreakdown = v.first),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
-          expensesAsync.when(
+          (_showIncomeBreakdown ? incomesAsync : expensesAsync).when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Text('Error: $e'),
-            data: (expenses) {
+            data: (items) {
               final totals = <String, double>{};
-              for (final e in expenses) {
+              for (final e in items) {
                 totals[e.category.name] =
                     (totals[e.category.name] ?? 0) + e.amount;
               }
@@ -117,7 +157,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   padding: const EdgeInsets.all(24),
                   child: Center(
                     child: Text(
-                      'Sin gastos este mes',
+                      _showIncomeBreakdown
+                          ? 'Sin ingresos este mes'
+                          : 'Sin gastos este mes',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
@@ -129,7 +171,12 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                 children: [
                   _PieSection(totals: totals, total: total),
                   const SizedBox(height: 20),
-                  _CategoryList(totals: totals, total: total, expenses: expenses),
+                  _CategoryList(
+                    totals: totals,
+                    total: total,
+                    expenses: items.cast<Expense>(),
+                    budgetLimits: _showIncomeBreakdown ? {} : budgetLimits,
+                  ),
                 ],
               );
             },
@@ -409,7 +456,13 @@ class _CategoryList extends StatelessWidget {
   final Map<String, double> totals;
   final double total;
   final List<dynamic> expenses;
-  const _CategoryList({required this.totals, required this.total, required this.expenses});
+  final Map<String, double> budgetLimits;
+  const _CategoryList({
+    required this.totals,
+    required this.total,
+    required this.expenses,
+    required this.budgetLimits,
+  });
 
   void _showCategorySheet(BuildContext context, ExpenseCategory cat) {
     final catExpenses = (expenses as List<Expense>)
@@ -435,6 +488,18 @@ class _CategoryList extends StatelessWidget {
       children: sorted.map((e) {
         final cat = ExpenseCategory.fromKey(e.key);
         final pct = e.value / total;
+        final budgetLimit = budgetLimits[cat.key];
+        final budgetPct =
+            budgetLimit != null && budgetLimit > 0 ? e.value / budgetLimit : null;
+        final barValue = budgetPct != null ? budgetPct.clamp(0.0, 1.0) : pct;
+        final barColor = budgetPct == null
+            ? cat.color
+            : budgetPct >= 1.0
+                ? const Color(0xFFE53935)
+                : budgetPct >= 0.8
+                    ? const Color(0xFFFF9800)
+                    : const Color(0xFF4CAF50);
+
         return InkWell(
           onTap: () => _showCategorySheet(context, cat),
           borderRadius: BorderRadius.circular(8),
@@ -460,13 +525,21 @@ class _CategoryList extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: pct,
-                          backgroundColor: cat.color.withValues(alpha: 0.15),
-                          valueColor: AlwaysStoppedAnimation(cat.color),
+                          value: barValue,
+                          backgroundColor: barColor.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation(barColor),
                           minHeight: 4,
                         ),
                       ),
                     ),
+                    if (budgetLimit != null)
+                      Text(
+                        '${(budgetPct! * 100).toStringAsFixed(0)}% del límite',
+                        style: TextStyle(
+                            fontSize: 9,
+                            color: barColor,
+                            fontWeight: FontWeight.w600),
+                      ),
                   ],
                 ),
                 const SizedBox(width: 4),
@@ -478,6 +551,191 @@ class _CategoryList extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ─── Spending trend chart (last 6 months) ────────────────────────────────────
+
+class _SpendingTrendChart extends StatelessWidget {
+  final List<double> byMonthExpense;
+  final List<double> byMonthIncome;
+  final int highlightMonth; // 1-12
+
+  const _SpendingTrendChart({
+    required this.byMonthExpense,
+    required this.byMonthIncome,
+    required this.highlightMonth,
+  });
+
+  static const _months = ['E','F','M','A','M','J','J','A','S','O','N','D'];
+  static const _expenseColor = Color(0xFFE53935);
+  static const _incomeColor  = Color(0xFF4CAF50);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Last 6 months ending at highlightMonth
+    final indices = List.generate(6, (i) => (highlightMonth - 6 + i + 12) % 12);
+
+    final expenseSpots = indices.asMap().entries.map((e) =>
+        FlSpot(e.key.toDouble(), byMonthExpense[e.value])).toList();
+    final incomeSpots = indices.asMap().entries.map((e) =>
+        FlSpot(e.key.toDouble(), byMonthIncome[e.value])).toList();
+
+    final allValues = [
+      ...byMonthExpense.where((v) => v > 0),
+      ...byMonthIncome.where((v) => v > 0),
+    ];
+    final maxY = allValues.isEmpty ? 1000.0
+        : allValues.reduce((a, b) => a > b ? a : b) * 1.2;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 20, 20, 12),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 160,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: maxY / 4,
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: theme.dividerColor.withValues(alpha: 0.5),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (v, _) {
+                          final idx = v.toInt();
+                          if (idx < 0 || idx >= indices.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final monthIdx = indices[idx];
+                          final isHighlight = monthIdx == highlightMonth - 1;
+                          return Text(
+                            _months[monthIdx],
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isHighlight
+                                  ? FontWeight.w700
+                                  : FontWeight.normal,
+                              color: isHighlight
+                                  ? _expenseColor
+                                  : theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.55),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (_) =>
+                          theme.colorScheme.surface,
+                      getTooltipItems: (spots) => spots.map((s) {
+                        final isExpense = s.barIndex == 0;
+                        return LineTooltipItem(
+                          CurrencyFormatter.format(s.y),
+                          TextStyle(
+                            color: isExpense ? _expenseColor : _incomeColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  lineBarsData: [
+                    // Expenses
+                    LineChartBarData(
+                      spots: expenseSpots,
+                      isCurved: true,
+                      curveSmoothness: 0.3,
+                      color: _expenseColor,
+                      barWidth: 2.5,
+                      dotData: FlDotData(
+                        getDotPainter: (spot, pct, bar, idx) =>
+                            FlDotCirclePainter(
+                          radius: indices[idx] == highlightMonth - 1 ? 5 : 3,
+                          color: _expenseColor,
+                          strokeColor: Colors.white,
+                          strokeWidth: 1.5,
+                        ),
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            _expenseColor.withValues(alpha: 0.15),
+                            _expenseColor.withValues(alpha: 0.0),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                    // Incomes
+                    LineChartBarData(
+                      spots: incomeSpots,
+                      isCurved: true,
+                      curveSmoothness: 0.3,
+                      color: _incomeColor,
+                      barWidth: 2.5,
+                      dotData: FlDotData(
+                        getDotPainter: (spot, pct, bar, idx) =>
+                            FlDotCirclePainter(
+                          radius: indices[idx] == highlightMonth - 1 ? 5 : 3,
+                          color: _incomeColor,
+                          strokeColor: Colors.white,
+                          strokeWidth: 1.5,
+                        ),
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            _incomeColor.withValues(alpha: 0.10),
+                            _incomeColor.withValues(alpha: 0.0),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _Legend(color: _expenseColor, label: 'Gastos'),
+                const SizedBox(width: 20),
+                _Legend(color: _incomeColor, label: 'Ingresos'),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -554,7 +812,7 @@ class _CategoryExpensesSheet extends StatelessWidget {
                     shrinkWrap: true,
                     padding: const EdgeInsets.only(bottom: 24),
                     itemCount: expenses.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (context, i) =>
                         const Divider(height: 1, indent: 68),
                     itemBuilder: (context, i) =>
                         ExpenseCard(expense: expenses[i]),

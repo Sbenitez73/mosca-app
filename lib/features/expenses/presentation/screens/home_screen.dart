@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../features/budgets/presentation/providers/budgets_provider.dart';
 import '../../../../features/recurring/domain/recurring_service.dart';
+import '../../../../features/shared_debts/presentation/providers/shared_debts_provider.dart';
+import '../../../../features/projection/presentation/providers/projection_provider.dart';
 import '../../../../core/services/home_widget_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../providers/expenses_provider.dart';
@@ -19,13 +22,35 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final _notifiedTier = <String, int>{};
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FlutterNativeSplash.remove();
       _processRecurring();
+      NotificationService.requestPermissions();
     });
+  }
+
+  void _checkBudgetAlerts(List<BudgetStatus> statuses) {
+    for (final s in statuses) {
+      if (s.budget.limit <= 0) continue;
+      final pct = s.spent / s.budget.limit;
+      final key = s.budget.category.key;
+      final tier = pct >= 1.0 ? 100 : pct >= 0.8 ? 80 : 0;
+      final last = _notifiedTier[key] ?? 0;
+      if (tier > 0 && tier > last) {
+        _notifiedTier[key] = tier;
+        NotificationService.showBudgetAlert(
+          categoryKey: key,
+          categoryLabel: s.budget.category.label,
+          isOver: tier >= 100,
+          percentUsed: tier,
+        );
+      }
+    }
   }
 
   Future<void> _processRecurring() async {
@@ -57,6 +82,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     ref.listen(monthlyTotalProvider, (prev, next) => _syncWidget());
     ref.listen(monthlyIncomeProvider, (prev, next) => _syncWidget());
+    ref.listen(budgetStatusProvider, (prev, next) => _checkBudgetAlerts(next));
+    ref.listen(activeSharedDebtsProvider, (prev, next) {
+      if (next.hasValue) NotificationService.rescheduleDebtReminders(next.value!);
+    });
 
     final expensesAsync = ref.watch(currentMonthExpensesProvider);
     final theme = Theme.of(context);
@@ -97,6 +126,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SliverToBoxAdapter(child: MonthSummaryCard()),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
             const SliverToBoxAdapter(child: _BudgetSummarySection()),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(child: _SharedDebtsSummarySection()),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            SliverToBoxAdapter(child: _ProjectionSummarySection()),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
             SliverToBoxAdapter(
               child: Padding(
@@ -274,6 +307,240 @@ class _BudgetSummarySection extends ConsumerWidget {
                     ],
                   );
                 }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Shared debts summary ─────────────────────────────────────────────────────
+
+class _SharedDebtsSummarySection extends ConsumerWidget {
+  const _SharedDebtsSummarySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final debtsAsync = ref.watch(activeSharedDebtsProvider);
+    final now = DateTime.now();
+    final paymentsAsync =
+        ref.watch(sharedDebtPaymentsProvider((now.year, now.month)));
+
+    final theme = Theme.of(context);
+
+    final debts = debtsAsync.valueOrNull ?? [];
+    final payments = paymentsAsync.valueOrNull ?? [];
+
+    final paymentByDebt = {for (final p in payments) p.debtId: p};
+
+    final pending = debts
+        .where((d) => !paymentByDebt.containsKey(d.id))
+        .fold<double>(0, (s, d) => s + d.amount);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Deudas compartidas', style: theme.textTheme.titleLarge),
+              TextButton(
+                onPressed: () => context.push('/shared-debts'),
+                child: Text(debts.isEmpty ? 'Agregar' : 'Gestionar'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => context.push('/shared-debts'),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: debts.isEmpty
+                    ? Row(
+                        children: [
+                          Icon(
+                            Icons.handshake_outlined,
+                            size: 28,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.25),
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            'Registrá deudas a tu nombre',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.4),
+                            ),
+                          ),
+                          const Spacer(),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.25),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${debts.length} deuda${debts.length == 1 ? '' : 's'} activa${debts.length == 1 ? '' : 's'}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (pending > 0) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${CurrencyFormatter.format(pending)} pendiente${pending > 0 ? 's' : ''}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: const Color(0xFFFF9800),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ] else
+                                Text(
+                                  'Todo pagado este mes',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: const Color(0xFF4CAF50),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const Spacer(),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.25),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Projection summary ───────────────────────────────────────────────────────
+
+class _ProjectionSummarySection extends ConsumerWidget {
+  const _ProjectionSummarySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final projectionAsync = ref.watch(cashFlowProjectionProvider);
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Proyección', style: theme.textTheme.titleLarge),
+              TextButton(
+                onPressed: () => context.push('/projection'),
+                child: const Text('Ver detalle'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => context.push('/projection'),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: projectionAsync.when(
+                  loading: () => const Center(
+                    child: SizedBox(
+                      height: 36,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  error: (e, _) => Row(
+                    children: [
+                      Icon(Icons.error_outline,
+                          color: theme.colorScheme.error, size: 20),
+                      const SizedBox(width: 8),
+                      Text('No disponible',
+                          style: theme.textTheme.bodyMedium),
+                    ],
+                  ),
+                  data: (projections) {
+                    if (projections.isEmpty) {
+                      return Row(
+                        children: [
+                          Icon(Icons.show_chart_rounded,
+                              size: 28,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.25)),
+                          const SizedBox(width: 14),
+                          Text('Agregá gastos recurrentes',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.4),
+                              )),
+                        ],
+                      );
+                    }
+                    final current  = projections.first;
+                    final balance  = current.balance;
+                    final balColor = balance >= 0
+                        ? const Color(0xFF4CAF50)
+                        : const Color(0xFFE53935);
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Balance proyectado este mes',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.55),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${balance >= 0 ? '+' : ''}${CurrencyFormatter.format(balance)}',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: balColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          balance >= 0
+                              ? Icons.trending_up_rounded
+                              : Icons.trending_down_rounded,
+                          color: balColor,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right_rounded,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.25)),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),

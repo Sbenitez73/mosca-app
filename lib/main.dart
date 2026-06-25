@@ -8,6 +8,7 @@ import 'package:workmanager/workmanager.dart';
 import 'app.dart';
 import 'core/db/database_service.dart';
 import 'core/services/home_widget_service.dart';
+import 'core/services/notification_service.dart';
 import 'core/network/dio_client.dart';
 import 'features/expenses/data/models/expense_category.dart';
 import 'features/expenses/data/repositories/sqflite_category_repository.dart';
@@ -30,6 +31,7 @@ Future<void> main() async {
   await initializeDateFormatting('es', null);
 
   await HomeWidgetService.init();
+  await NotificationService.init();
 
   final dbService = DatabaseService();
   await dbService.init();

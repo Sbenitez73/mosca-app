@@ -31,7 +31,12 @@ class SqfliteCategoryRepository implements CategoryRepository {
   Future<void> save(ExpenseCategory cat) async {
     await _db.insert(
       'categories',
-      {'key': cat.key, 'label': cat.label, 'color_value': cat.color.toARGB32()},
+      {
+        'key': cat.key,
+        'label': cat.label,
+        'color_value': cat.color.toARGB32(),
+        'is_income': cat.isIncome ? 1 : 0,
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     ExpenseCategory.registerCustom([cat]);
@@ -49,5 +54,6 @@ class SqfliteCategoryRepository implements CategoryRepository {
         key: row['key'] as String,
         label: row['label'] as String,
         color: Color(row['color_value'] as int),
+        isIncome: (row['is_income'] as int? ?? 0) == 1,
       );
 }

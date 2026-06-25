@@ -16,6 +16,7 @@ class Expense {
   final String? cardLastFour;
   final String? merchantName;
   final String? gmailMessageId;
+  final String? receiptPhotoPath;
 
   const Expense({
     this.id,
@@ -31,6 +32,7 @@ class Expense {
     this.cardLastFour,
     this.merchantName,
     this.gmailMessageId,
+    this.receiptPhotoPath,
   });
 
   bool get isIncome => type == TransactionType.income;
@@ -49,6 +51,7 @@ class Expense {
     String? cardLastFour,
     String? merchantName,
     String? gmailMessageId,
+    String? receiptPhotoPath,
   }) {
     return Expense(
       id: id ?? this.id,
@@ -64,6 +67,7 @@ class Expense {
       cardLastFour: cardLastFour ?? this.cardLastFour,
       merchantName: merchantName ?? this.merchantName,
       gmailMessageId: gmailMessageId ?? this.gmailMessageId,
+      receiptPhotoPath: receiptPhotoPath ?? this.receiptPhotoPath,
     );
   }
 
@@ -81,6 +85,7 @@ class Expense {
         'card_last_four': cardLastFour,
         'merchant_name': merchantName,
         'gmail_message_id': gmailMessageId,
+        'receipt_photo_path': receiptPhotoPath,
       };
 
   factory Expense.fromMap(Map<String, dynamic> map) => Expense(
@@ -103,6 +108,7 @@ class Expense {
         cardLastFour: map['card_last_four'] as String?,
         merchantName: map['merchant_name'] as String?,
         gmailMessageId: map['gmail_message_id'] as String?,
+        receiptPhotoPath: map['receipt_photo_path'] as String?,
       );
 
   String get displayName =>

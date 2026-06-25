@@ -109,7 +109,12 @@ class ExpenseCategory {
 
   static List<ExpenseCategory> get expenseCategories => [
         ...builtins.where((c) => !c.isIncome),
-        ..._registry.values.where((c) => c.isCustom),
+        ..._registry.values.where((c) => c.isCustom && !c.isIncome),
+      ];
+
+  static List<ExpenseCategory> get incomeCategories => [
+        ...incomeBuiltins,
+        ..._registry.values.where((c) => c.isCustom && c.isIncome),
       ];
 
   // ─── Custom factory ──────────────────────────────────────────────────────────
@@ -118,13 +123,15 @@ class ExpenseCategory {
     required String key,
     required String label,
     required Color color,
+    bool isIncome = false,
   }) =>
       ExpenseCategory._(
         key: key,
         label: label,
-        icon: Icons.label_rounded,
+        icon: isIncome ? Icons.attach_money_rounded : Icons.label_rounded,
         color: color,
         isCustom: true,
+        isIncome: isIncome,
       );
 
   // ─── Compat ──────────────────────────────────────────────────────────────────

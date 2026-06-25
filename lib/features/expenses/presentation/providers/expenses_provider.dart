@@ -132,5 +132,16 @@ final customCategoriesProvider = StreamProvider<List<ExpenseCategory>>((ref) {
 
 final allCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
   final customs = ref.watch(customCategoriesProvider).valueOrNull ?? [];
-  return [...ExpenseCategory.builtins.where((c) => !c.isIncome), ...customs];
+  return [
+    ...ExpenseCategory.builtins.where((c) => !c.isIncome),
+    ...customs.where((c) => !c.isIncome),
+  ];
+});
+
+final allIncomeCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
+  final customs = ref.watch(customCategoriesProvider).valueOrNull ?? [];
+  return [
+    ...ExpenseCategory.incomeBuiltins,
+    ...customs.where((c) => c.isIncome),
+  ];
 });

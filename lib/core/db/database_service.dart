@@ -11,7 +11,7 @@ class DatabaseService {
 
     _db = await openDatabase(
       path,
-      version: 7,
+      version: 10,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
@@ -35,7 +35,8 @@ class DatabaseService {
         card_last_four TEXT,
         merchant_name TEXT,
         gmail_message_id TEXT UNIQUE,
-        type TEXT NOT NULL DEFAULT 'expense'
+        type TEXT NOT NULL DEFAULT 'expense',
+        receipt_photo_path TEXT
       )
     ''');
     await db.execute('CREATE INDEX idx_expenses_date ON expenses(date)');
@@ -50,7 +51,8 @@ class DatabaseService {
       CREATE TABLE categories (
         key TEXT PRIMARY KEY,
         label TEXT NOT NULL,
-        color_value INTEGER NOT NULL
+        color_value INTEGER NOT NULL,
+        is_income INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -71,6 +73,58 @@ class DatabaseService {
         day_of_month INTEGER NOT NULL,
         type TEXT NOT NULL DEFAULT 'expense',
         last_generated_at INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE saving_goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        target_amount REAL NOT NULL,
+        saved_amount REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'COP',
+        preset_index INTEGER NOT NULL DEFAULT 7
+      )
+    ''');
+    await _createSharedDebtTables(db);
+    await _createSplitTables(db);
+  }
+
+  Future<void> _createSplitTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS expense_splits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        expense_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        amount REAL NOT NULL,
+        settled INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(expense_id) REFERENCES expenses(id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  Future<void> _createSharedDebtTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS shared_debts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        label TEXT NOT NULL,
+        owner_name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'COP',
+        due_day_of_month INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS shared_debt_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        debt_id INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        paid_by_owner INTEGER NOT NULL DEFAULT 0,
+        paid_at INTEGER NOT NULL,
+        UNIQUE(debt_id, year, month),
+        FOREIGN KEY(debt_id) REFERENCES shared_debts(id) ON DELETE CASCADE
       )
     ''');
   }
@@ -134,6 +188,30 @@ class DatabaseService {
           last_generated_at INTEGER
         )
       ''');
+    }
+    if (oldVersion < 8) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS saving_goals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          target_amount REAL NOT NULL,
+          saved_amount REAL NOT NULL DEFAULT 0,
+          currency TEXT NOT NULL DEFAULT 'COP',
+          preset_index INTEGER NOT NULL DEFAULT 7
+        )
+      ''');
+    }
+    if (oldVersion < 9) {
+      await db.execute(
+        'ALTER TABLE categories ADD COLUMN is_income INTEGER NOT NULL DEFAULT 0',
+      );
+      await _createSharedDebtTables(db);
+    }
+    if (oldVersion < 10) {
+      await db.execute(
+        'ALTER TABLE expenses ADD COLUMN receipt_photo_path TEXT',
+      );
+      await _createSplitTables(db);
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/budgets/presentation/screens/budgets_screen.dart';
 import '../../features/recurring/presentation/screens/recurring_screen.dart';
+import '../../features/savings/presentation/screens/savings_screen.dart';
 import '../../features/expenses/data/models/expense.dart';
 import '../../features/expenses/presentation/providers/expenses_provider.dart';
 import '../../features/expenses/presentation/screens/home_screen.dart';
@@ -12,6 +13,9 @@ import '../../features/expenses/presentation/screens/manage_categories_screen.da
 import '../../features/quick_add/presentation/screens/quick_add_screen.dart';
 import '../../features/quick_add/presentation/screens/quick_add_detail_screen.dart';
 import '../../features/gmail_sync/presentation/screens/gmail_setup_screen.dart';
+import '../../features/projection/presentation/screens/projection_screen.dart';
+import '../../features/shared_debts/presentation/screens/shared_debts_screen.dart';
+import '../../features/splits/presentation/screens/split_expense_screen.dart';
 import '../../features/stats/presentation/screens/stats_screen.dart';
 
 final appRouter = GoRouter(
@@ -48,6 +52,18 @@ final appRouter = GoRouter(
           path: '/recurring',
           builder: (context, state) => const RecurringScreen(),
         ),
+        GoRoute(
+          path: '/savings',
+          builder: (context, state) => const SavingsScreen(),
+        ),
+        GoRoute(
+          path: '/shared-debts',
+          builder: (context, state) => const SharedDebtsScreen(),
+        ),
+        GoRoute(
+          path: '/projection',
+          builder: (context, state) => const ProjectionScreen(),
+        ),
       ],
     ),
     GoRoute(
@@ -57,6 +73,16 @@ final appRouter = GoRouter(
         return MaterialPage(
           fullscreenDialog: true,
           child: EditExpenseScreen(expense: expense),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/split',
+      pageBuilder: (context, state) {
+        final expense = state.extra as Expense;
+        return MaterialPage(
+          fullscreenDialog: true,
+          child: SplitExpenseScreen(expense: expense),
         );
       },
     ),
@@ -93,7 +119,7 @@ class _Shell extends ConsumerWidget {
     return idx < 0 ? 0 : idx;
   }
 
-  static const _noFabRoutes = {'/settings', '/categories', '/budgets', '/recurring'};
+  static const _noFabRoutes = {'/settings', '/categories', '/budgets', '/recurring', '/savings', '/shared-debts', '/projection'};
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

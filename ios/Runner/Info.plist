@@ -6,6 +6,14 @@
 		<true/>
 		<key>NSSupportsLiveActivities</key>
 		<true/>
+		<key>NSContactsUsageDescription</key>
+		<string>Para elegir a quién le vas a cobrar sin escribir el número</string>
+		<key>NSFaceIDUsageDescription</key>
+		<string>Usa Face ID para proteger tus datos financieros</string>
+		<key>NSCameraUsageDescription</key>
+		<string>Para fotografiar la factura del gasto</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Para adjuntar una foto de la factura</string>
 		<key>CFBundleURLTypes</key>
 		<array>
 			<dict>

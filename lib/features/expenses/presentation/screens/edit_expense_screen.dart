@@ -72,9 +72,13 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
     TransactionType.expense  => 'gasto',
   };
 
-  Future<void> _pickCategory(BuildContext context, List<ExpenseCategory> expenseCategories) async {
+  Future<void> _pickCategory(
+    BuildContext context,
+    List<ExpenseCategory> expenseCategories,
+    List<ExpenseCategory> incomeCategories,
+  ) async {
     final categories = widget.expense.type == TransactionType.income
-        ? ExpenseCategory.incomeBuiltins
+        ? incomeCategories
         : expenseCategories;
     final picked = await showCategoryPicker(
       context,
@@ -162,6 +166,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final allCategories = ref.watch(allCategoriesProvider);
+    final allIncomeCategories = ref.watch(allIncomeCategoriesProvider);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -169,6 +174,13 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
         backgroundColor: colorScheme.surface,
         title: Text('Editar ${_typeLabel[0].toUpperCase()}${_typeLabel.substring(1)}'),
         actions: [
+          if (widget.expense.id != null &&
+              widget.expense.type == TransactionType.expense)
+            IconButton(
+              icon: const Icon(Icons.call_split_rounded),
+              tooltip: 'Dividir gasto',
+              onPressed: () => context.push('/split', extra: widget.expense),
+            ),
           IconButton(
             icon: const Icon(Icons.delete_outline_rounded),
             color: colorScheme.error,
@@ -271,7 +283,7 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
             ),
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () => _pickCategory(context, allCategories),
+              onTap: () => _pickCategory(context, allCategories, allIncomeCategories),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                 decoration: BoxDecoration(
@@ -368,6 +380,19 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
             Text(
               _error!,
               style: TextStyle(color: theme.colorScheme.error, fontSize: 13),
+            ),
+          ],
+
+          if (widget.expense.id != null &&
+              widget.expense.type == TransactionType.expense) ...[
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => context.push('/split', extra: widget.expense),
+              icon: const Icon(Icons.call_split_rounded),
+              label: const Text('Dividir gasto entre personas'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+              ),
             ),
           ],
 

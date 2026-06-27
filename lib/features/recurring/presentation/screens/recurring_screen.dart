@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../core/utils/date_formatter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/utils/thousands_formatter.dart';
+import '../../../../shared/widgets/category_selector_field.dart';
 import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/data/models/transaction_type.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
@@ -247,7 +249,7 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
     _type = e?.type ?? TransactionType.expense;
     _day = e?.dayOfMonth ?? 1;
     _amountController = TextEditingController(
-      text: e == null ? '' : _ThousandsFormatter.format(e.amount.toInt()),
+      text: e == null ? '' : ThousandsInputFormatter.format(e.amount.toInt()),
     );
     _descController = TextEditingController(text: e?.description ?? '');
   }
@@ -260,8 +262,7 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
   }
 
   Future<void> _save() async {
-    final amount = double.tryParse(
-        _amountController.text.replaceAll('.', '').replaceAll(',', ''));
+    final amount = ThousandsInputFormatter.parse(_amountController.text);
     final desc = _descController.text.trim();
     if (_category == null || amount == null || amount <= 0 || desc.isEmpty) return;
     setState(() => _isSaving = true);
@@ -388,9 +389,7 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
                 );
                 if (picked != null) setState(() => _category = picked);
               },
-              child: _category != null
-                  ? _CategoryChip(category: _category!, showChevron: true)
-                  : _CategoryPlaceholder(),
+              child: CategorySelectorField(category: _category),
             ),
             const SizedBox(height: 20),
 
@@ -403,7 +402,7 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
-              inputFormatters: [_ThousandsFormatter()],
+              inputFormatters: [ThousandsInputFormatter()],
               style: theme.textTheme.titleMedium,
               decoration: InputDecoration(
                 prefixText: '\$ ',
@@ -497,91 +496,3 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
   }
 }
 
-class _CategoryChip extends StatelessWidget {
-  final ExpenseCategory category;
-  final bool showChevron;
-
-  const _CategoryChip({required this.category, this.showChevron = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: category.color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: category.color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          Icon(category.icon, size: 22, color: category.color),
-          const SizedBox(width: 12),
-          Text(category.label,
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: category.color)),
-          if (showChevron) ...[
-            const Spacer(),
-            Icon(Icons.keyboard_arrow_down_rounded,
-                color: category.color.withValues(alpha: 0.6)),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryPlaceholder extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: cs.onSurface.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.grid_view_rounded,
-              size: 22, color: cs.onSurface.withValues(alpha: 0.35)),
-          const SizedBox(width: 12),
-          Text('Seleccionar categoría',
-              style: TextStyle(
-                  fontSize: 15, color: cs.onSurface.withValues(alpha: 0.4))),
-          const Spacer(),
-          Icon(Icons.keyboard_arrow_down_rounded,
-              color: cs.onSurface.withValues(alpha: 0.35)),
-        ],
-      ),
-    );
-  }
-}
-
-class _ThousandsFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-    final n = int.tryParse(digits) ?? 0;
-    final formatted = format(n);
-    return newValue.copyWith(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-
-  static String format(int n) {
-    final s = n.toString();
-    final buf = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return buf.toString();
-  }
-}

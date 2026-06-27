@@ -4,6 +4,7 @@ import '../models/transaction_type.dart';
 abstract class ExpenseRepository {
   Stream<List<Expense>> watchAll();
   Stream<List<Expense>> watchMonth(int year, int month, {TransactionType? type});
+  Stream<List<Expense>> watchPeriod(DateTime start, DateTime end, {TransactionType? type});
   Future<void> save(Expense expense);
   Future<void> delete(int id);
   Future<Expense?> findByGmailMessageId(String messageId);

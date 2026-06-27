@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../features/budgets/presentation/providers/budgets_provider.dart';
-import '../../../../features/recurring/domain/recurring_service.dart';
-import '../../../../features/shared_debts/presentation/providers/shared_debts_provider.dart';
-import '../../../../features/projection/presentation/providers/projection_provider.dart';
 import '../../../../core/services/home_widget_service.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../../../features/budgets/presentation/providers/budgets_provider.dart';
+import '../../../../features/projection/presentation/providers/projection_provider.dart';
+import '../../../../features/recurring/domain/recurring_service.dart';
+import '../../../../features/shared_debts/presentation/providers/shared_debts_provider.dart';
 import '../providers/expenses_provider.dart';
 import '../widgets/expense_card.dart';
 import '../widgets/month_summary_card.dart';
@@ -102,7 +103,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 color: Theme.of(context).colorScheme.primary,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.pest_control, color: Colors.white, size: 18),
+              child: Padding(
+                padding: const EdgeInsets.all(5),
+                child: Image.asset(
+                  'assets/splash/splash_icon.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
             ),
             const SizedBox(width: 10),
             Text('Mosca', style: theme.textTheme.headlineSmall),
@@ -187,12 +194,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 class _BudgetSummarySection extends ConsumerWidget {
   const _BudgetSummarySection();
 
-  Color _barColor(double pct) {
-    if (pct > 1.0) return const Color(0xFFE53935);
-    if (pct > 0.8) return const Color(0xFFFF9800);
-    return const Color(0xFF4CAF50);
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusList = ref.watch(budgetStatusProvider);
@@ -256,7 +257,7 @@ class _BudgetSummarySection extends ConsumerWidget {
                   final pct = s.budget.limit > 0
                       ? s.spent / s.budget.limit
                       : 0.0;
-                  final color = _barColor(pct);
+                  final color = AppColors.budgetBarColor(pct);
                   final isOver = pct > 1.0;
 
                   return Column(

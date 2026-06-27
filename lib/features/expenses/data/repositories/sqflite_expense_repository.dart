@@ -37,6 +37,23 @@ class SqfliteExpenseRepository implements ExpenseRepository {
   }
 
   @override
+  Stream<List<Expense>> watchPeriod(DateTime start, DateTime end,
+      {TransactionType? type}) {
+    final s = start.millisecondsSinceEpoch;
+    final e = end.millisecondsSinceEpoch;
+    return _watchQuery(
+      () => _db.query(
+        'expenses',
+        where: type != null
+            ? 'date BETWEEN ? AND ? AND type = ?'
+            : 'date BETWEEN ? AND ?',
+        whereArgs: type != null ? [s, e, type.name] : [s, e],
+        orderBy: 'date DESC',
+      ),
+    );
+  }
+
+  @override
   Future<void> save(Expense expense) async {
     if (expense.id == null) {
       await _db.insert(

@@ -53,7 +53,7 @@ class _QuickAddDetailScreenState extends ConsumerState<QuickAddDetailScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: TextButton(
-              onPressed: state.isSaving ? null : () => _save(context),
+              onPressed: state.isSaving ? null : _save,
               child: state.isSaving
                   ? const SizedBox(
                       width: 18,
@@ -174,7 +174,7 @@ class _QuickAddDetailScreenState extends ConsumerState<QuickAddDetailScreen> {
     );
   }
 
-  Future<void> _save(BuildContext context) async {
+  Future<void> _save() async {
     await LiveActivityService.end();
     final success = await ref.read(quickAddProvider.notifier).save();
     if (success && mounted) context.go('/');

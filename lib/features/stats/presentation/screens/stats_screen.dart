@@ -452,7 +452,7 @@ class _PieSection extends StatelessWidget {
 
 // ─── Category list ────────────────────────────────────────────────────────────
 
-class _CategoryList extends StatelessWidget {
+class _CategoryList extends ConsumerWidget {
   final Map<String, double> totals;
   final double total;
   final List<dynamic> expenses;
@@ -464,22 +464,24 @@ class _CategoryList extends StatelessWidget {
     required this.budgetLimits,
   });
 
-  void _showCategorySheet(BuildContext context, ExpenseCategory cat) {
+  Future<void> _showCategorySheet(BuildContext context, WidgetRef ref, ExpenseCategory cat) async {
     final catExpenses = (expenses as List<Expense>)
         .where((e) => e.category.key == cat.key)
         .toList();
 
-    showModalBottomSheet(
+    ref.read(statsCategorySheetOpenProvider.notifier).state = true;
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _CategoryExpensesSheet(category: cat, expenses: catExpenses),
     );
+    ref.read(statsCategorySheetOpenProvider.notifier).state = false;
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final sorted = totals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final theme = Theme.of(context);
@@ -501,7 +503,7 @@ class _CategoryList extends StatelessWidget {
                     : const Color(0xFF4CAF50);
 
         return InkWell(
-          onTap: () => _showCategorySheet(context, cat),
+          onTap: () => _showCategorySheet(context, ref, cat),
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),

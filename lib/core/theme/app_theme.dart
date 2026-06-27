@@ -77,6 +77,9 @@ abstract class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           labelStyle: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w500),
         ),
+        snackBarTheme: const SnackBarThemeData(
+          actionTextColor: AppColors.primaryLight,
+        ),
       );
 
   static ThemeData get dark => ThemeData(
@@ -152,6 +155,9 @@ abstract class AppTheme {
           side: const BorderSide(color: AppColors.dividerDark),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           labelStyle: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+        snackBarTheme: const SnackBarThemeData(
+          actionTextColor: AppColors.primaryLight,
         ),
       );
 

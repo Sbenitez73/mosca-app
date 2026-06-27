@@ -37,8 +37,10 @@ class Expense {
 
   bool get isIncome => type == TransactionType.income;
 
+  static const _unset = Object();
+
   Expense copyWith({
-    int? id,
+    Object? id = _unset,
     double? amount,
     String? currency,
     ExpenseCategory? category,
@@ -54,7 +56,7 @@ class Expense {
     String? receiptPhotoPath,
   }) {
     return Expense(
-      id: id ?? this.id,
+      id: id == _unset ? this.id : id as int?,
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,
       category: category ?? this.category,

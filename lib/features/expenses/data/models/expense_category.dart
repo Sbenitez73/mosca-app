@@ -124,11 +124,12 @@ class ExpenseCategory {
     required String label,
     required Color color,
     bool isIncome = false,
+    IconData? icon,
   }) =>
       ExpenseCategory._(
         key: key,
         label: label,
-        icon: isIncome ? Icons.attach_money_rounded : Icons.label_rounded,
+        icon: icon ?? (isIncome ? Icons.attach_money_rounded : Icons.label_rounded),
         color: color,
         isCustom: true,
         isIncome: isIncome,

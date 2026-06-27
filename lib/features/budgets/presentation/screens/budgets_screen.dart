@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/utils/thousands_formatter.dart';
+import '../../../../shared/widgets/category_selector_field.dart';
 import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
 import '../../../expenses/presentation/widgets/category_picker_sheet.dart';
@@ -57,12 +59,6 @@ class _BudgetCard extends StatelessWidget {
 
   const _BudgetCard({required this.status, required this.onTap});
 
-  Color _barColor(double pct) {
-    if (pct > 1.0) return const Color(0xFFE53935);
-    if (pct > 0.8) return const Color(0xFFFF9800);
-    return const Color(0xFF4CAF50);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -70,7 +66,7 @@ class _BudgetCard extends StatelessWidget {
     final cat = status.budget.category;
     final pct =
         status.budget.limit > 0 ? status.spent / status.budget.limit : 0.0;
-    final color = _barColor(pct);
+    final color = AppColors.budgetBarColor(pct);
     final isOver = pct > 1.0;
 
     return Card(
@@ -225,7 +221,7 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
     _amountController = TextEditingController(
       text: existing == null
           ? ''
-          : _ThousandsFormatter.format(existing.limit.toInt()),
+          : ThousandsInputFormatter.format(existing.limit.toInt()),
     );
   }
 
@@ -236,8 +232,7 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
   }
 
   Future<void> _save() async {
-    final amount = double.tryParse(
-        _amountController.text.replaceAll('.', '').replaceAll(',', ''));
+    final amount = ThousandsInputFormatter.parse(_amountController.text);
     if (_category == null || amount == null || amount <= 0) return;
     setState(() => _isSaving = true);
     await ref.read(budgetRepositoryProvider).save(
@@ -328,7 +323,7 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
           ),
           const SizedBox(height: 8),
           if (_isEditing && _category != null)
-            _CategoryDisplay(category: _category!)
+            CategorySelectorField(category: _category!, showChevron: false)
           else
             GestureDetector(
               onTap: () async {
@@ -339,9 +334,7 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
                 );
                 if (picked != null) setState(() => _category = picked);
               },
-              child: _category != null
-                  ? _CategoryDisplay(category: _category!, showChevron: true)
-                  : _CategoryPlaceholder(),
+              child: CategorySelectorField(category: _category),
             ),
 
           const SizedBox(height: 20),
@@ -357,7 +350,7 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
-            inputFormatters: [_ThousandsFormatter()],
+            inputFormatters: [ThousandsInputFormatter()],
             autofocus: _isEditing,
             style: theme.textTheme.titleMedium,
             decoration: InputDecoration(
@@ -391,97 +384,3 @@ class _BudgetFormSheetState extends ConsumerState<_BudgetFormSheet> {
   }
 }
 
-class _CategoryDisplay extends StatelessWidget {
-  final ExpenseCategory category;
-  final bool showChevron;
-
-  const _CategoryDisplay({required this.category, this.showChevron = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: category.color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: category.color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          Icon(category.icon, size: 22, color: category.color),
-          const SizedBox(width: 12),
-          Text(
-            category.label,
-            style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: category.color),
-          ),
-          if (showChevron) ...[
-            const Spacer(),
-            Icon(Icons.keyboard_arrow_down_rounded,
-                color: category.color.withValues(alpha: 0.6)),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryPlaceholder extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: cs.onSurface.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.grid_view_rounded,
-              size: 22, color: cs.onSurface.withValues(alpha: 0.35)),
-          const SizedBox(width: 12),
-          Text(
-            'Seleccionar categoría',
-            style: TextStyle(
-                fontSize: 15, color: cs.onSurface.withValues(alpha: 0.4)),
-          ),
-          const Spacer(),
-          Icon(Icons.keyboard_arrow_down_rounded,
-              color: cs.onSurface.withValues(alpha: 0.35)),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Thousands formatter ──────────────────────────────────────────────────────
-
-class _ThousandsFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-    final n = int.tryParse(digits) ?? 0;
-    final formatted = format(n);
-    return newValue.copyWith(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-
-  static String format(int n) {
-    final s = n.toString();
-    final buf = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return buf.toString();
-  }
-}

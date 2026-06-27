@@ -88,9 +88,12 @@ class NotificationService {
   /// Cancels all existing debt reminders (IDs 20000–29999) and reschedules
   /// one per active debt, firing 2 days before the monthly due day at 9 AM.
   static Future<void> rescheduleDebtReminders(List<SharedDebt> debts) async {
-    // Cancel existing range
+    // Cancel existing range — ignore PlatformException from stale notification
+    // cache (happens when the plugin version changes the stored format).
     for (var i = 20000; i < 20000 + debts.length + 50; i++) {
-      await _plugin.cancel(i);
+      try {
+        await _plugin.cancel(i);
+      } catch (_) {}
     }
 
     final now = tz.TZDateTime.now(tz.local);
@@ -123,7 +126,7 @@ class NotificationService {
             importance: Importance.high, priority: Priority.high,
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );

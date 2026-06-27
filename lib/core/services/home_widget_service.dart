@@ -1,7 +1,8 @@
 import 'package:home_widget/home_widget.dart';
+import '../config/app_secrets.dart';
 
 class HomeWidgetService {
-  static const _appGroupId = 'group.com.mosca.mosca';
+  static const _appGroupId = AppSecrets.appGroupId;
   static const _androidWidgetName = 'MoscaWidgetProvider';
   static const _iosWidgetName = 'MoscaBalanceWidget';
 

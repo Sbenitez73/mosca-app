@@ -27,6 +27,16 @@ abstract class AppColors {
   static const success = Color(0xFF43A047);
   static const warning = Color(0xFFFFA000);
 
+  // Transaction
+  static const income = Color(0xFF4CAF50);
+  static const expense = Color(0xFFE53935);
+
+  static Color budgetBarColor(double pct) {
+    if (pct > 1.0) return const Color(0xFFE53935);
+    if (pct > 0.8) return const Color(0xFFFF9800);
+    return const Color(0xFF4CAF50);
+  }
+
   // Category colors
   static const catFood = Color(0xFFFF6B35);
   static const catTransport = Color(0xFF2196F3);

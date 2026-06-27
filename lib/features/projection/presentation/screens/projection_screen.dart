@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../providers/projection_provider.dart';
@@ -47,11 +48,10 @@ class _MonthCard extends StatefulWidget {
 class _MonthCardState extends State<_MonthCard> {
   bool _expanded = false;
 
-  static const _incomeColor  = Color(0xFF4CAF50);
-  static const _expenseColor = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
+    const incomeColor  = AppColors.income;
+    const expenseColor = AppColors.expense;
     final theme = Theme.of(context);
     final cs    = theme.colorScheme;
     final p     = widget.projection;
@@ -59,7 +59,7 @@ class _MonthCardState extends State<_MonthCard> {
     final isCurrentMonth =
         p.month.year == now.year && p.month.month == now.month;
 
-    final balanceColor = p.balance >= 0 ? _incomeColor : _expenseColor;
+    final balanceColor = p.balance >= 0 ? incomeColor : expenseColor;
     final daysInMonth  = DateUtils.getDaysInMonth(p.month.year, p.month.month);
     final dayProgress  = isCurrentMonth ? now.day / daysInMonth : null;
 
@@ -109,7 +109,7 @@ class _MonthCardState extends State<_MonthCard> {
                   _MetricChip(
                     label: 'Ingresos',
                     value: p.totalIncome,
-                    color: _incomeColor,
+                    color: incomeColor,
                     hasActual: isCurrentMonth && p.actualIncome > 0,
                     actualValue: p.actualIncome,
                   ),
@@ -117,7 +117,7 @@ class _MonthCardState extends State<_MonthCard> {
                   _MetricChip(
                     label: 'Gastos',
                     value: p.totalExpense,
-                    color: _expenseColor,
+                    color: expenseColor,
                     hasActual: isCurrentMonth && p.actualExpense > 0,
                     actualValue: p.actualExpense,
                   ),
@@ -229,14 +229,11 @@ class _ItemRow extends StatelessWidget {
   final ProjectionItem item;
   const _ItemRow({required this.item});
 
-  static const _incomeColor  = Color(0xFF4CAF50);
-  static const _expenseColor = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs    = theme.colorScheme;
-    final color = item.isIncome ? _incomeColor : _expenseColor;
+    final color = item.isIncome ? AppColors.income : AppColors.expense;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -291,8 +288,7 @@ class _CumulativeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color =
-        balance >= 0 ? const Color(0xFF4CAF50) : const Color(0xFFE53935);
+    final color = balance >= 0 ? AppColors.income : AppColors.expense;
 
     return Card(
       child: Padding(

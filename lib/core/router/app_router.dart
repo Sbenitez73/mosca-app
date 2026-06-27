@@ -16,11 +16,25 @@ import '../../features/gmail_sync/presentation/screens/gmail_setup_screen.dart';
 import '../../features/projection/presentation/screens/projection_screen.dart';
 import '../../features/shared_debts/presentation/screens/shared_debts_screen.dart';
 import '../../features/splits/presentation/screens/split_expense_screen.dart';
+import '../../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../../features/stats/presentation/screens/stats_screen.dart';
+import '../providers/onboarding_provider.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
+  redirect: (context, state) {
+    final done = ProviderScope.containerOf(context, listen: false)
+        .read(onboardingDoneProvider);
+    if (!done && state.uri.path != '/onboarding') return '/onboarding';
+    return null;
+  },
   routes: [
+    GoRoute(
+      path: '/onboarding',
+      pageBuilder: (context, state) => const NoTransitionPage(
+        child: OnboardingScreen(),
+      ),
+    ),
     ShellRoute(
       builder: (context, state, child) => _Shell(child: child),
       routes: [
@@ -125,7 +139,8 @@ class _Shell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).uri.path;
     final isSearching = ref.watch(searchActiveProvider);
-    final showFab = !_noFabRoutes.contains(location) && !isSearching;
+    final isCategorySheetOpen = ref.watch(statsCategorySheetOpenProvider);
+    final showFab = !_noFabRoutes.contains(location) && !isSearching && !isCategorySheetOpen;
 
     return Scaffold(
       body: child,

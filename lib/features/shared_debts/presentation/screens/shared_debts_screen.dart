@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/utils/thousands_formatter.dart';
 import '../../data/models/shared_debt.dart';
 import '../../data/models/shared_debt_payment.dart';
 import '../providers/shared_debts_provider.dart';
@@ -544,24 +544,6 @@ class _DebtFormSheet extends StatefulWidget {
   State<_DebtFormSheet> createState() => _DebtFormSheetState();
 }
 
-final _thousandsFmt = NumberFormat('#,##0', 'es_CO');
-
-class _ThousandsFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-    final formatted = _thousandsFmt.format(int.parse(digits));
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-}
-
 class _DebtFormSheetState extends State<_DebtFormSheet> {
   late final TextEditingController _labelCtrl;
   late final TextEditingController _ownerCtrl;
@@ -577,7 +559,7 @@ class _DebtFormSheetState extends State<_DebtFormSheet> {
     _labelCtrl  = TextEditingController(text: e?.label ?? '');
     _ownerCtrl  = TextEditingController(text: e?.ownerName ?? '');
     _amountCtrl = TextEditingController(
-      text: e == null ? '' : _thousandsFmt.format(e.amount.toInt()),
+      text: e == null ? '' : ThousandsInputFormatter.format(e.amount.toInt()),
     );
     _dueDay = e?.dueDayOfMonth ?? 1;
   }
@@ -593,9 +575,7 @@ class _DebtFormSheetState extends State<_DebtFormSheet> {
   Future<void> _save() async {
     final label  = _labelCtrl.text.trim();
     final owner  = _ownerCtrl.text.trim();
-    final amount = double.tryParse(
-      _amountCtrl.text.replaceAll('.', '').replaceAll(',', '.'),
-    );
+    final amount = ThousandsInputFormatter.parse(_amountCtrl.text);
 
     if (label.isEmpty) {
       setState(() => _error = 'Escribe un nombre para la deuda');
@@ -693,7 +673,7 @@ class _DebtFormSheetState extends State<_DebtFormSheet> {
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
-              inputFormatters: [_ThousandsFormatter()],
+              inputFormatters: [ThousandsInputFormatter()],
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
                 labelText: 'Monto mensual',

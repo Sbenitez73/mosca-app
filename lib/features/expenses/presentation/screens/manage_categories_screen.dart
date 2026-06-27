@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/expense_category.dart';
 import '../providers/expenses_provider.dart';
+import '../widgets/icon_picker_sheet.dart';
 
 class ManageCategoriesScreen extends ConsumerWidget {
   const ManageCategoriesScreen({super.key});
@@ -53,7 +54,10 @@ class ManageCategoriesScreen extends ConsumerWidget {
               else
                 ...expenseCustoms.map(
                   (cat) => ListTile(
-                    leading: _ColorDot(color: cat.color),
+                    leading: _EditableIcon(
+                      category: cat,
+                      onTap: () => _changeIcon(context, ref, cat),
+                    ),
                     title: Text(cat.label),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline_rounded),
@@ -80,7 +84,10 @@ class ManageCategoriesScreen extends ConsumerWidget {
               else
                 ...incomeCustoms.map(
                   (cat) => ListTile(
-                    leading: _ColorDot(color: cat.color),
+                    leading: _EditableIcon(
+                      category: cat,
+                      onTap: () => _changeIcon(context, ref, cat),
+                    ),
                     title: Text(cat.label),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline_rounded),
@@ -134,6 +141,32 @@ class ManageCategoriesScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _changeIcon(
+    BuildContext context,
+    WidgetRef ref,
+    ExpenseCategory cat,
+  ) async {
+    final icon = await showModalBottomSheet<IconData>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => IconPickerSheet(color: cat.color, selected: cat.icon),
+    );
+    if (icon != null) {
+      final updated = ExpenseCategory.custom(
+        key: cat.key,
+        label: cat.label,
+        color: cat.color,
+        isIncome: cat.isIncome,
+        icon: icon,
+      );
+      await ref.read(categoryRepositoryProvider).save(updated);
+      HapticFeedback.lightImpact();
+    }
+  }
+
   Future<void> _confirmDelete(
     BuildContext context,
     WidgetRef ref,
@@ -182,6 +215,7 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
   bool _saving = false;
   bool _isIncome = false;
   String? _error;
+  IconData _selectedIcon = Icons.label_rounded;
 
   @override
   void initState() {
@@ -193,6 +227,18 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickIcon() async {
+    final icon = await showModalBottomSheet<IconData>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => IconPickerSheet(color: _selected, selected: _selectedIcon),
+    );
+    if (icon != null) setState(() => _selectedIcon = icon);
   }
 
   Future<void> _save() async {
@@ -209,6 +255,7 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
       label: label,
       color: _selected,
       isIncome: _isIncome,
+      icon: _selectedIcon,
     );
     await widget.ref.read(categoryRepositoryProvider).save(cat);
     HapticFeedback.lightImpact();
@@ -234,7 +281,10 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
               ButtonSegment(value: true,  label: Text('Ingreso'), icon: Icon(Icons.trending_up_rounded)),
             ],
             selected: {_isIncome},
-            onSelectionChanged: (v) => setState(() => _isIncome = v.first),
+            onSelectionChanged: (v) => setState(() {
+              _isIncome = v.first;
+              _selectedIcon = v.first ? Icons.attach_money_rounded : Icons.label_rounded;
+            }),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -292,6 +342,28 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
               );
             }).toList(),
           ),
+          const SizedBox(height: 20),
+          Text(
+            'Ícono',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: _pickIcon,
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: _selected.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _selected.withValues(alpha: 0.4), width: 1.5),
+              ),
+              child: Icon(_selectedIcon, color: _selected, size: 28),
+            ),
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -331,22 +403,6 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _ColorDot extends StatelessWidget {
-  final Color color;
-  const _ColorDot({required this.color});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.label_rounded, color: Colors.white, size: 16),
-      );
-}
-
 class _CategoryIcon extends StatelessWidget {
   final ExpenseCategory category;
   const _CategoryIcon({required this.category});
@@ -361,4 +417,52 @@ class _CategoryIcon extends StatelessWidget {
         ),
         child: Icon(category.icon, color: category.color, size: 16),
       );
+}
+
+class _EditableIcon extends StatelessWidget {
+  final ExpenseCategory category;
+  final VoidCallback onTap;
+  const _EditableIcon({required this.category, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: category.color.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(category.icon, color: category.color, size: 18),
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: category.color.withValues(alpha: 0.4),
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                Icons.edit_rounded,
+                size: 8,
+                color: category.color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

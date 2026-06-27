@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:live_activities/live_activities.dart';
+import '../../../../core/config/app_secrets.dart';
 
-const _kAppGroup = 'group.com.mosca.mosca';
+const _kAppGroup = AppSecrets.appGroupId;
 
 abstract class LiveActivityService {
   static final _plugin = LiveActivities();

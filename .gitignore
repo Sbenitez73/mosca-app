@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ── Secrets (never commit these) ─────────────────────────────────────────────
+secrets.env
+lib/core/config/app_secrets.dart
+ios/Runner/GoogleService-Info.plist

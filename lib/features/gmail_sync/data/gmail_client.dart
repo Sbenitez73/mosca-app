@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../../core/config/app_secrets.dart';
 
 const _gmailBase = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -19,6 +20,7 @@ class GmailClient {
   GmailClient(this._dio)
       : _googleSignIn = GoogleSignIn(
           scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+          serverClientId: AppSecrets.googleServerClientId,
         );
 
   GoogleSignIn get googleSignIn => _googleSignIn;

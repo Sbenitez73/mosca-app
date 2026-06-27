@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/providers/pay_period_provider.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/utils/period_utils.dart';
 import '../../data/models/expense_category.dart';
 import '../providers/expenses_provider.dart';
 
@@ -15,7 +17,11 @@ class MonthSummaryCard extends ConsumerWidget {
     final balance = ref.watch(monthlyBalanceProvider);
     final expensesAsync = ref.watch(currentMonthExpensesProvider);
     final theme = Theme.of(context);
-    final now = DateTime.now();
+
+    final cutDay = ref.watch(payPeriodDayProvider).valueOrNull ?? 1;
+    final periodLabel = ref.watch(currentPeriodLabelProvider);
+    final periodDate = DateTime(periodLabel.year, periodLabel.month);
+    final periodDesc = PeriodUtils.description(periodLabel.year, periodLabel.month, cutDay);
 
     final count = expensesAsync.maybeWhen(data: (e) => e.length, orElse: () => 0);
     final balancePositive = balance >= 0;
@@ -46,12 +52,25 @@ class MonthSummaryCard extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  DateFormatter.monthYear(now).toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.white70,
-                    letterSpacing: 1.2,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      DateFormatter.monthYear(periodDate).toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.white70,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    if (periodDesc.isNotEmpty)
+                      Text(
+                        periodDesc,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: Colors.white38,
+                          fontSize: 10,
+                        ),
+                      ),
+                  ],
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

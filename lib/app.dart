@@ -33,18 +33,12 @@ class _BiometricGate extends ConsumerStatefulWidget {
 class _BiometricGateState extends ConsumerState<_BiometricGate>
     with WidgetsBindingObserver {
   bool _authenticating = false;
+  bool _initialAuthDone = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final enabled = ref.read(biometricEnabledProvider).valueOrNull ?? false;
-      if (enabled) {
-        ref.read(appLockedProvider.notifier).state = true;
-        await _tryAuth();
-      }
-    });
   }
 
   @override
@@ -79,9 +73,22 @@ class _BiometricGateState extends ConsumerState<_BiometricGate>
     }
   }
 
+  void _lockAndAuth() {
+    if (_initialAuthDone) return;
+    _initialAuthDone = true;
+    ref.read(appLockedProvider.notifier).state = true;
+    _tryAuth();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLocked = ref.watch(appLockedProvider);
+
+    // Fires when biometricEnabledProvider transitions from loading → data(true)
+    ref.listen<AsyncValue<bool>>(biometricEnabledProvider, (_, next) {
+      if (next.valueOrNull == true) _lockAndAuth();
+    });
+
     if (!isLocked) return widget.child;
 
     return Scaffold(

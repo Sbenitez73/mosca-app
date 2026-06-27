@@ -11,7 +11,7 @@ class DatabaseService {
 
     _db = await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
@@ -52,7 +52,8 @@ class DatabaseService {
         key TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         color_value INTEGER NOT NULL,
-        is_income INTEGER NOT NULL DEFAULT 0
+        is_income INTEGER NOT NULL DEFAULT 0,
+        icon_codepoint INTEGER
       )
     ''');
     await db.execute('''
@@ -212,6 +213,11 @@ class DatabaseService {
         'ALTER TABLE expenses ADD COLUMN receipt_photo_path TEXT',
       );
       await _createSplitTables(db);
+    }
+    if (oldVersion < 11) {
+      await db.execute(
+        'ALTER TABLE categories ADD COLUMN icon_codepoint INTEGER',
+      );
     }
   }
 

@@ -1,11 +1,11 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:workmanager/workmanager.dart';
 import 'app.dart';
+import 'core/config/app_secrets.dart';
+import 'core/providers/onboarding_provider.dart';
 import 'core/db/database_service.dart';
 import 'core/services/home_widget_service.dart';
 import 'core/services/notification_service.dart';
@@ -15,15 +15,6 @@ import 'features/expenses/data/repositories/sqflite_category_repository.dart';
 import 'features/expenses/presentation/providers/expenses_provider.dart';
 import 'features/gmail_sync/data/gmail_client.dart';
 import 'features/gmail_sync/presentation/providers/gmail_sync_provider.dart';
-
-const _kGmailSyncTask = 'mosca.gmail_sync';
-
-@pragma('vm:entry-point')
-void _backgroundDispatcher() {
-  Workmanager().executeTask((task, _) async {
-    return true;
-  });
-}
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -40,19 +31,12 @@ Future<void> main() async {
   final customCats = await SqfliteCategoryRepository(dbService).getAll();
   ExpenseCategory.registerCustom(customCats);
 
-  // workmanager periodic tasks only supported on Android
-  if (Platform.isAndroid) {
-    await Workmanager().initialize(_backgroundDispatcher);
-    await Workmanager().registerPeriodicTask(
-      _kGmailSyncTask,
-      _kGmailSyncTask,
-      frequency: const Duration(hours: 24),
-      existingWorkPolicy: ExistingWorkPolicy.keep,
-    );
-  }
+  final onboardingDone =
+      await dbService.getSetting('onboarding_done') == '1';
 
   final googleSignIn = GoogleSignIn(
     scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+    serverClientId: AppSecrets.googleServerClientId,
   );
   final dioClient = DioClient(googleSignIn);
   final gmailClient = GmailClient(dioClient.dio);
@@ -60,6 +44,7 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [
+        onboardingDoneProvider.overrideWith((ref) => onboardingDone),
         databaseServiceProvider.overrideWithValue(dbService),
         googleSignInProvider.overrideWithValue(googleSignIn),
         dioClientProvider.overrideWithValue(dioClient),

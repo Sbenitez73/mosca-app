@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers/biometric_provider.dart';
+import '../../../../core/providers/pay_period_provider.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/period_utils.dart';
 import '../../../../shared/widgets/mosca_button.dart';
 import '../../../splits/data/models/payment_method.dart';
 import '../../../splits/presentation/providers/splits_provider.dart';
@@ -153,6 +155,11 @@ class GmailSetupScreen extends ConsumerWidget {
               onTap: () => context.push('/savings'),
             ),
           ),
+
+          const SizedBox(height: 16),
+
+          // ── Pay period ────────────────────────────────────────────────
+          const _PayPeriodCard(),
 
           const SizedBox(height: 16),
 
@@ -606,6 +613,177 @@ class _SignedOutContent extends ConsumerWidget {
           onPressed: () => ref.read(gmailAuthProvider.notifier).signIn(),
         ),
       ],
+    );
+  }
+}
+
+// ─── Pay period card ──────────────────────────────────────────────────────────
+
+class _PayPeriodCard extends ConsumerWidget {
+  const _PayPeriodCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final cutDay = ref.watch(payPeriodDayProvider).valueOrNull ?? 1;
+    final now = DateTime.now();
+    final label = PeriodUtils.currentPeriodLabel(now, cutDay);
+    final desc = PeriodUtils.description(label.year, label.month, cutDay);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Periodo financiero', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Define desde qué día empieza tu mes. Útil si tu salario llega antes del 1.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        cutDay == 1
+                            ? 'Mes calendario (del 1 al fin de mes)'
+                            : 'Corte el día $cutDay de cada mes',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      if (desc.isNotEmpty)
+                        Text(
+                          'Periodo actual: $desc',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _showPicker(context, ref, cutDay),
+                  child: const Text('Cambiar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPicker(BuildContext context, WidgetRef ref, int current) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('Día de inicio del periodo', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(
+              'Elige el día del mes en que recibes tu salario o empieza tu ciclo.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Day 1 = calendar month
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Mes calendario'),
+              subtitle: const Text('Del 1 al último día del mes'),
+              leading: Icon(
+                current == 1
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: current == 1
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+              onTap: () {
+                ref.read(payPeriodDayProvider.notifier).setDay(1);
+                Navigator.pop(context);
+              },
+            ),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            Text(
+              'Día de corte personalizado',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final day in [5, 10, 15, 20, 25, 26, 27, 28])
+                  _DayChip(day: day, selected: current == day, ref: ref),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DayChip extends StatelessWidget {
+  final int day;
+  final bool selected;
+  final WidgetRef ref;
+
+  const _DayChip({required this.day, required this.selected, required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final label = PeriodUtils.currentPeriodLabel(now, day);
+    final desc = PeriodUtils.description(label.year, label.month, day);
+
+    return ChoiceChip(
+      label: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Día $day', style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(desc, style: const TextStyle(fontSize: 10)),
+        ],
+      ),
+      selected: selected,
+      onSelected: (_) {
+        ref.read(payPeriodDayProvider.notifier).setDay(day);
+        Navigator.pop(context);
+      },
     );
   }
 }

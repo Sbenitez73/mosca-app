@@ -33,12 +33,6 @@ dependencies:
   # Notifications
   flutter_local_notifications: ^18.0.1
 
-  # Background sync
-  workmanager: ^0.5.2
-
-  # Android floating overlay (Dynamic Island equivalent)
-  flutter_overlay_window: ^0.4.2
-
   # UI + fonts
   google_fonts: ^6.2.1
   intl: ^0.20.2
@@ -63,21 +57,34 @@ dependencies:
   # Split expense
   image_picker: ^1.1.2
   share_plus: ^10.1.0
-  flutter_contacts: ^1.1.9+2
 
   cupertino_icons: ^1.0.8
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   build_runner: ^2.4.14
+  flutter_launcher_icons: ^0.14.4
 
 dependency_overrides:
   google_sign_in_ios: 5.7.7
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo/
+    - assets/splash/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/splash/splash_icon.png"
+  background_color: "#0A7E4A"
+  adaptive_icon_background: "#0A7E4A"
+  adaptive_icon_foreground: "assets/splash/splash_icon.png"
+  min_sdk_android: 21
 
 flutter_native_splash:
   color: "#0A7E4A"

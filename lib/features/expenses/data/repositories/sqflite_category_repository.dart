@@ -36,6 +36,7 @@ class SqfliteCategoryRepository implements CategoryRepository {
         'label': cat.label,
         'color_value': cat.color.toARGB32(),
         'is_income': cat.isIncome ? 1 : 0,
+        'icon_codepoint': cat.icon.codePoint,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -50,10 +51,17 @@ class SqfliteCategoryRepository implements CategoryRepository {
     _changeController.add(null);
   }
 
-  ExpenseCategory _fromRow(Map<String, dynamic> row) => ExpenseCategory.custom(
-        key: row['key'] as String,
-        label: row['label'] as String,
-        color: Color(row['color_value'] as int),
-        isIncome: (row['is_income'] as int? ?? 0) == 1,
-      );
+  ExpenseCategory _fromRow(Map<String, dynamic> row) {
+    final codePoint = row['icon_codepoint'] as int?;
+    final icon = codePoint != null
+        ? IconData(codePoint, fontFamily: 'MaterialIcons')
+        : null;
+    return ExpenseCategory.custom(
+      key: row['key'] as String,
+      label: row['label'] as String,
+      color: Color(row['color_value'] as int),
+      isIncome: (row['is_income'] as int? ?? 0) == 1,
+      icon: icon,
+    );
+  }
 }

@@ -1,23 +1,21 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/utils/thousands_formatter.dart';
 import '../../../expenses/data/models/expense.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
 import '../../data/models/expense_split.dart';
 import '../../data/models/payment_method.dart';
 import '../../data/models/split_contact.dart';
 import '../providers/splits_provider.dart';
-
-final _thousandsFmt = NumberFormat('#,##0', 'es_CO');
 
 class SplitExpenseScreen extends ConsumerStatefulWidget {
   final Expense expense;
@@ -73,12 +71,10 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                 leading: Icon(Icons.delete_outline_rounded,
                     color: Theme.of(ctx).colorScheme.error),
                 title: Text('Eliminar foto',
-                    style:
-                        TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  final updated =
-                      widget.expense.copyWith(receiptPhotoPath: '');
+                  final updated = widget.expense.copyWith(receiptPhotoPath: '');
                   await ref.read(expenseRepositoryProvider).save(updated);
                   if (mounted) setState(() => _photoPath = null);
                 },
@@ -89,17 +85,14 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
     );
   }
 
-  Future<void> _shareWithPerson(
-      ExpenseSplit split, List<PaymentMethod> methods) async {
+  String _buildMessage(ExpenseSplit split, List<PaymentMethod> methods) {
     final amount = CurrencyFormatter.format(split.amount,
         currency: widget.expense.currency);
     final desc = widget.expense.displayName.isNotEmpty
         ? widget.expense.displayName
         : widget.expense.description;
-
     final buffer = StringBuffer();
-    buffer.writeln(
-        'Hola, ${split.name}. Me quedaste debiendo $amount de $desc.');
+    buffer.writeln('Hola, ${split.name}. Me quedaste debiendo $amount de $desc.');
     if (methods.isNotEmpty) {
       buffer.writeln();
       buffer.writeln('Podés pagarme por:');
@@ -107,12 +100,39 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
         buffer.writeln('• ${m.label}: ${m.value}');
       }
     }
-    final text = buffer.toString().trim();
+    return buffer.toString().trim();
+  }
 
-    if (_photoPath != null && File(_photoPath!).existsSync()) {
-      await Share.shareXFiles([XFile(_photoPath!)], text: text);
-    } else {
-      await Share.share(text);
+  /// Strips all non-digit characters (including +) from a phone number.
+  String _normalizePhone(String phone) =>
+      phone.replaceAll(RegExp(r'[^\d]'), '');
+
+  Future<void> _shareWithPerson(
+      ExpenseSplit split, List<PaymentMethod> methods) async {
+    final text = _buildMessage(split, methods);
+    final phone = split.phone?.trim();
+    bool sent = false;
+
+    if (phone != null && phone.isNotEmpty) {
+      final digits = _normalizePhone(phone);
+      if (digits.isNotEmpty) {
+        // Try WhatsApp deep link directly to the conversation
+        final waUri = Uri.parse(
+            'https://wa.me/$digits?text=${Uri.encodeComponent(text)}');
+        if (await canLaunchUrl(waUri)) {
+          await launchUrl(waUri, mode: LaunchMode.externalApplication);
+          sent = true;
+        }
+      }
+    }
+
+    if (!sent) {
+      // Fallback: system share sheet (no phone or WhatsApp not installed)
+      if (_photoPath != null && File(_photoPath!).existsSync()) {
+        await Share.shareXFiles([XFile(_photoPath!)], text: text);
+      } else {
+        await Share.share(text);
+      }
     }
 
     await ref.read(splitRepositoryProvider).markSettled(split.id!);
@@ -120,11 +140,20 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
     HapticFeedback.lightImpact();
   }
 
-  void _showAddParticipantSheet({ExpenseSplit? existing, required int expenseId}) {
+  void _showAddParticipantSheet({
+    ExpenseSplit? existing,
+    required int expenseId,
+    required List<ExpenseSplit> currentSplits,
+  }) {
     final expense = widget.expense;
     final expenseDesc = expense.displayName.isNotEmpty
         ? expense.displayName
         : expense.description;
+
+    // Sum of all splits except the one being edited
+    final alreadyAssigned = currentSplits
+        .where((s) => s.id != existing?.id)
+        .fold(0.0, (sum, s) => sum + s.amount);
 
     showModalBottomSheet(
       context: context,
@@ -133,6 +162,8 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
       builder: (_) => _ParticipantSheet(
         existing: existing,
         expenseId: expenseId,
+        expenseAmount: expense.amount,
+        alreadyAssigned: alreadyAssigned,
         onSave: (split) async {
           final isNew = split.id == null;
           final insertedId = await ref.read(splitRepositoryProvider).save(split);
@@ -150,13 +181,32 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
     );
   }
 
-  Future<void> _splitEqually(List<ExpenseSplit> splits) async {
-    if (splits.isEmpty) return;
-    final each = widget.expense.amount / splits.length;
-    for (final s in splits) {
-      await ref.read(splitRepositoryProvider).save(
-            s.copyWith(amount: double.parse(each.toStringAsFixed(0))),
-          );
+  Future<void> _quickSplit(int n, List<ExpenseSplit> currentSplits) async {
+    final total = widget.expense.amount.round();
+    final base = (total ~/ n).toDouble();
+    final remainder = (total % n).toDouble();
+    final repo = ref.read(splitRepositoryProvider);
+
+    if (currentSplits.length == n) {
+      // Redistribute existing splits keeping names
+      for (var i = 0; i < n; i++) {
+        final amount = base + (i == 0 ? remainder : 0);
+        await repo.save(currentSplits[i].copyWith(amount: amount));
+      }
+    } else {
+      // Delete all and create n placeholders
+      for (final s in currentSplits) {
+        await repo.delete(s.id!);
+        await NotificationService.cancelSplitReminder(s.id!);
+      }
+      for (var i = 1; i <= n; i++) {
+        final amount = base + (i == 1 ? remainder : 0);
+        await repo.save(ExpenseSplit(
+          expenseId: widget.expense.id!,
+          name: 'Persona $i',
+          amount: amount,
+        ));
+      }
     }
     HapticFeedback.lightImpact();
   }
@@ -169,9 +219,7 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
       builder: (_) => _QuickPaymentMethodSheet(
         onSave: (method) async {
           final current = ref.read(paymentMethodsProvider).valueOrNull ?? [];
-          await ref
-              .read(paymentMethodsProvider.notifier)
-              .save([...current, method]);
+          await ref.read(paymentMethodsProvider.notifier).save([...current, method]);
         },
       ),
     );
@@ -184,7 +232,6 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
     final methodsAsync = ref.watch(paymentMethodsProvider);
     final theme = Theme.of(context);
 
-    // Block until at least one payment method is configured
     final methods = methodsAsync.valueOrNull;
     if (methods != null && methods.isEmpty) {
       return _PaymentMethodsRequired(onAdd: _showAddPaymentMethodSheet);
@@ -216,16 +263,14 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                         Text(
                           'Total del gasto',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.5),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
                     ),
                   ),
                   Text(
-                    CurrencyFormatter.format(expense.amount,
-                        currency: expense.currency),
+                    CurrencyFormatter.format(expense.amount, currency: expense.currency),
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
@@ -272,11 +317,9 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                         height: 90,
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: theme.colorScheme.outline
-                                  .withValues(alpha: 0.4)),
+                              color: theme.colorScheme.outline.withValues(alpha: 0.4)),
                           borderRadius: BorderRadius.circular(12),
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.04),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.04),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -300,67 +343,137 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
 
           // ── Participants ────────────────────────────────────────────────
           splitsAsync.when(
-            loading: () =>
-                const Center(child: CircularProgressIndicator()),
+            loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Text('Error: $e'),
-            data: (splits) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text('Participantes',
-                          style: theme.textTheme.titleMedium),
+            data: (splits) {
+              final assignedTotal = splits.fold(0.0, (s, e) => s + e.amount);
+              final remaining = expense.amount - assignedTotal;
+              final isBalanced = remaining.abs() < 1;
+              final isOver = remaining < -0.5;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title
+                  Text('Participantes', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 10),
+
+                  // ── Quick split chips ÷2…÷6 ──────────────────────────
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        Text(
+                          'Dividir en partes iguales:',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        for (final n in [2, 3, 4, 5, 6])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ActionChip(
+                              label: Text('÷$n',
+                                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                              onPressed: () => _quickSplit(n, splits),
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                            ),
+                          ),
+                      ],
                     ),
-                    if (splits.length > 1)
-                      TextButton.icon(
-                        onPressed: () => _splitEqually(splits),
-                        icon: const Icon(Icons.balance_rounded, size: 16),
-                        label: const Text('Dividir igual'),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ── Split summary bar ─────────────────────────────────
+                  if (splits.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isOver
+                            ? theme.colorScheme.error.withValues(alpha: 0.08)
+                            : isBalanced
+                                ? const Color(0xFF4CAF50).withValues(alpha: 0.08)
+                                : theme.colorScheme.onSurface.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isOver
+                                ? Icons.warning_amber_rounded
+                                : isBalanced
+                                    ? Icons.check_circle_rounded
+                                    : Icons.info_outline_rounded,
+                            size: 16,
+                            color: isOver
+                                ? theme.colorScheme.error
+                                : isBalanced
+                                    ? const Color(0xFF4CAF50)
+                                    : theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              isOver
+                                  ? 'Excede el total por ${CurrencyFormatter.format(remaining.abs())}'
+                                  : isBalanced
+                                      ? 'División completa — suma el total exacto'
+                                      : 'Asignado ${CurrencyFormatter.format(assignedTotal)} / ${CurrencyFormatter.format(expense.amount)} · Faltan ${CurrencyFormatter.format(remaining)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: isOver
+                                    ? theme.colorScheme.error
+                                    : isBalanced
+                                        ? const Color(0xFF4CAF50)
+                                        : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  if (splits.isNotEmpty) const SizedBox(height: 8),
+
+                  // ── Split list ────────────────────────────────────────
+                  if (splits.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Agregá las personas que deben parte de este gasto',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (splits.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'Agregá las personas que deben parte de este gasto',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.4),
-                      ),
+                    )
+                  else
+                    ...splits.map((s) => _SplitTile(
+                          split: s,
+                          methods: methodsAsync.valueOrNull ?? [],
+                          onShare: () => _shareWithPerson(s, methodsAsync.valueOrNull ?? []),
+                          onEdit: () => _showAddParticipantSheet(
+                              existing: s,
+                              expenseId: expense.id!,
+                              currentSplits: splits),
+                          onDelete: () async =>
+                              ref.read(splitRepositoryProvider).delete(s.id!),
+                        )),
+
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _showAddParticipantSheet(
+                        expenseId: expense.id!, currentSplits: splits),
+                    icon: const Icon(Icons.person_add_rounded, size: 18),
+                    label: const Text('Agregar persona'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 44),
                     ),
-                  )
-                else
-                  ...splits.map((s) => _SplitTile(
-                        split: s,
-                        methods: methodsAsync.valueOrNull ?? [],
-                        onShare: () => _shareWithPerson(
-                            s, methodsAsync.valueOrNull ?? []),
-                        onEdit: () => _showAddParticipantSheet(
-                            existing: s, expenseId: expense.id!),
-                        onDelete: () async =>
-                            ref.read(splitRepositoryProvider).delete(s.id!),
-                      )),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _showAddParticipantSheet(expenseId: expense.id!),
-                  icon: const Icon(Icons.person_add_rounded, size: 18),
-                  label: const Text('Agregar persona'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 44),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: 24),
@@ -377,8 +490,8 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                           color: theme.colorScheme.primary, size: 20),
                       title: Text(
                         'Configurá tus datos de pago en Ajustes para que aparezcan en el mensaje',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary),
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.primary),
                       ),
                     ),
                   )
@@ -412,7 +525,7 @@ class _SplitTile extends ConsumerWidget {
     final theme = Theme.of(context);
     final contact = SplitContact(name: split.name, phone: split.phone);
     final isFav = ref.watch(splitFavoritesProvider).valueOrNull
-            ?.any((c) => c.name == contact.name && c.phone == contact.phone) ??
+            ?.any((c) => c.name == contact.name) ??
         false;
 
     return Card(
@@ -423,8 +536,7 @@ class _SplitTile extends ConsumerWidget {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor:
-                  theme.colorScheme.primary.withValues(alpha: 0.12),
+              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
               child: Text(
                 split.name.isNotEmpty ? split.name[0].toUpperCase() : '?',
                 style: TextStyle(
@@ -434,20 +546,9 @@ class _SplitTile extends ConsumerWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(split.name,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600)),
-                  if (split.phone != null && split.phone!.isNotEmpty)
-                    Text(split.phone!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.5),
-                        )),
-                ],
-              ),
+              child: Text(split.name,
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600)),
             ),
             Text(
               CurrencyFormatter.format(split.amount),
@@ -455,11 +556,12 @@ class _SplitTile extends ConsumerWidget {
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(width: 4),
-            // Star / favorite toggle
             IconButton(
               icon: Icon(
                 isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-                color: isFav ? Colors.amber : theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                color: isFav
+                    ? Colors.amber
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.3),
                 size: 20,
               ),
               onPressed: () =>
@@ -471,8 +573,7 @@ class _SplitTile extends ConsumerWidget {
             if (split.settled)
               Container(
                 margin: const EdgeInsets.only(left: 4),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFF4CAF50).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -487,8 +588,7 @@ class _SplitTile extends ConsumerWidget {
               FilledButton.tonal(
                 onPressed: onShare,
                 style: FilledButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   backgroundColor:
@@ -507,12 +607,10 @@ class _SplitTile extends ConsumerWidget {
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert_rounded,
                   size: 18,
-                  color: theme.colorScheme.onSurface
-                      .withValues(alpha: 0.4)),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                const PopupMenuItem(
-                    value: 'delete', child: Text('Eliminar')),
+                const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
               ],
               onSelected: (v) {
                 if (v == 'edit') onEdit();
@@ -531,11 +629,15 @@ class _SplitTile extends ConsumerWidget {
 class _ParticipantSheet extends ConsumerStatefulWidget {
   final ExpenseSplit? existing;
   final int expenseId;
+  final double expenseAmount;
+  final double alreadyAssigned;
   final Future<void> Function(ExpenseSplit) onSave;
 
   const _ParticipantSheet({
     this.existing,
     required this.expenseId,
+    required this.expenseAmount,
+    required this.alreadyAssigned,
     required this.onSave,
   });
 
@@ -550,14 +652,16 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
   bool _saving = false;
   String? _error;
 
+  double get _maxAmount => widget.expenseAmount - widget.alreadyAssigned;
+
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
-    _nameCtrl = TextEditingController(text: e?.name ?? '');
+    _nameCtrl  = TextEditingController(text: e?.name ?? '');
     _phoneCtrl = TextEditingController(text: e?.phone ?? '');
     _amountCtrl = TextEditingController(
-      text: e == null ? '' : _thousandsFmt.format(e.amount.toInt()),
+      text: e == null ? '' : ThousandsInputFormatter.format(e.amount.toInt()),
     );
   }
 
@@ -569,51 +673,47 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
     super.dispose();
   }
 
-  void _fillFromContact(SplitContact contact) {
-    setState(() {
-      _nameCtrl.text = contact.name;
-      _phoneCtrl.text = contact.phone ?? '';
-    });
-    Navigator.pop(context); // close contact picker
-  }
-
-  void _openContactPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _ContactPickerSheet(onSelect: _fillFromContact),
-    );
-  }
-
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       setState(() => _error = 'Escribe un nombre');
       return;
     }
-    final amount = double.tryParse(
-      _amountCtrl.text.replaceAll('.', '').replaceAll(',', '.'),
-    );
+    final amount = ThousandsInputFormatter.parse(_amountCtrl.text);
     if (amount == null || amount <= 0) {
       setState(() => _error = 'Ingresa un monto válido');
       return;
     }
+    if (amount > _maxAmount + 0.5) {
+      setState(() => _error =
+          'El monto excede lo disponible (máx. \$${ThousandsInputFormatter.format(_maxAmount.toInt())})');
+      return;
+    }
     setState(() { _saving = true; _error = null; });
-    await widget.onSave(ExpenseSplit(
-      id: widget.existing?.id,
-      expenseId: widget.expenseId,
-      name: name,
-      phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-      amount: amount,
-    ));
-    if (mounted) Navigator.pop(context);
+    try {
+      final phone = _phoneCtrl.text.trim();
+      await widget.onSave(ExpenseSplit(
+        id: widget.existing?.id,
+        expenseId: widget.expenseId,
+        name: name,
+        phone: phone.isEmpty ? null : phone,
+        amount: amount,
+      ));
+    } catch (_) {
+      // Ignore non-critical errors (e.g. notification scheduling)
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+        Navigator.pop(context);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final favorites = ref.watch(splitFavoritesProvider).valueOrNull ?? [];
 
     return Container(
       decoration: BoxDecoration(
@@ -635,23 +735,45 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
             ),
           ),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.existing == null
-                      ? 'Agregar persona'
-                      : 'Editar persona',
-                  style: theme.textTheme.titleLarge,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _openContactPicker,
-                icon: const Icon(Icons.contacts_rounded, size: 18),
-                label: const Text('Contactos'),
-              ),
-            ],
+          Text(
+            widget.existing == null ? 'Agregar persona' : 'Editar persona',
+            style: theme.textTheme.titleLarge,
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Disponible: \$${ThousandsInputFormatter.format(_maxAmount.toInt())}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+          // Favorites quick-select
+          if (favorites.isNotEmpty && widget.existing == null) ...[
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: favorites.map((fav) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ActionChip(
+                    avatar: CircleAvatar(
+                      backgroundColor: Colors.amber.withValues(alpha: 0.2),
+                      child: Text(
+                        fav.name[0].toUpperCase(),
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.amber),
+                      ),
+                    ),
+                    label: Text(fav.name),
+                    onPressed: () => setState(() {
+                      _nameCtrl.text = fav.name;
+                    }),
+                  ),
+                )).toList(),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _nameCtrl,
@@ -661,8 +783,7 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
             decoration: InputDecoration(
               labelText: 'Nombre',
               hintText: 'Ej. Sebastián',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
           const SizedBox(height: 12),
@@ -671,31 +792,34 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
             decoration: InputDecoration(
-              labelText: 'Teléfono (opcional)',
+              labelText: 'WhatsApp (con código de país)',
               hintText: '+57 300 000 0000',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              prefixIcon: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                child: Text('📱', style: TextStyle(fontSize: 16)),
+              ),
+              helperText: 'Al cobrar se abre directo su chat',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _amountCtrl,
             keyboardType: TextInputType.number,
-            inputFormatters: [_ThousandsInputFormatter()],
+            inputFormatters: [ThousandsInputFormatter()],
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _save(),
             decoration: InputDecoration(
               labelText: 'Monto que debe',
               prefixText: '\$ ',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              helperText: 'Máx. \$${ThousandsInputFormatter.format(_maxAmount.toInt())}',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!,
-                style: TextStyle(
-                    color: theme.colorScheme.error, fontSize: 13)),
+                style: TextStyle(color: theme.colorScheme.error, fontSize: 13)),
           ],
           const SizedBox(height: 20),
           SizedBox(
@@ -711,265 +835,6 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─── Contact picker sheet ─────────────────────────────────────────────────────
-
-class _ContactPickerSheet extends ConsumerStatefulWidget {
-  final ValueChanged<SplitContact> onSelect;
-  const _ContactPickerSheet({required this.onSelect});
-
-  @override
-  ConsumerState<_ContactPickerSheet> createState() =>
-      _ContactPickerSheetState();
-}
-
-class _ContactPickerSheetState extends ConsumerState<_ContactPickerSheet> {
-  List<Contact>? _contacts;
-  bool _permissionDenied = false;
-  String _search = '';
-  final _searchCtrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadContacts();
-  }
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadContacts() async {
-    final granted = await FlutterContacts.requestPermission(readonly: true);
-    if (!granted) {
-      if (mounted) setState(() => _permissionDenied = true);
-      return;
-    }
-    final contacts = await FlutterContacts.getContacts(withProperties: true);
-    if (mounted) setState(() => _contacts = contacts);
-  }
-
-  List<Contact> get _filtered {
-    final all = _contacts ?? [];
-    if (_search.isEmpty) return all;
-    final q = _search.toLowerCase();
-    return all.where((c) {
-      if (c.displayName.toLowerCase().contains(q)) return true;
-      return c.phones.any((p) => p.number.contains(q));
-    }).toList();
-  }
-
-  void _selectContact(Contact c) {
-    final phone =
-        c.phones.isNotEmpty ? c.phones.first.number.replaceAll(' ', '') : null;
-    widget.onSelect(SplitContact(name: c.displayName, phone: phone));
-  }
-
-  void _selectFavorite(SplitContact fav) {
-    widget.onSelect(fav);
-    Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final favorites = ref.watch(splitFavoritesProvider).valueOrNull ?? [];
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.85,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (ctx, scrollCtrl) => Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            // Handle
-            const SizedBox(height: 12),
-            Center(
-              child: Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _searchCtrl,
-                autofocus: true,
-                onChanged: (v) => setState(() => _search = v),
-                decoration: InputDecoration(
-                  hintText: 'Buscar contacto…',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _search.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            _searchCtrl.clear();
-                            setState(() => _search = '');
-                          },
-                        )
-                      : null,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: _permissionDenied
-                  ? _PermissionDeniedView()
-                  : _contacts == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : ListView(
-                          controller: scrollCtrl,
-                          children: [
-                            // ── Favoritos ──────────────────────────────
-                            if (favorites.isNotEmpty && _search.isEmpty) ...[
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                    16, 8, 16, 4),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.star_rounded,
-                                        size: 16, color: Colors.amber),
-                                    const SizedBox(width: 6),
-                                    Text('Favoritos',
-                                        style: theme.textTheme.labelMedium
-                                            ?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 0.5)),
-                                  ],
-                                ),
-                              ),
-                              ...favorites.map(
-                                (fav) => ListTile(
-                                  leading: CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: Colors.amber
-                                        .withValues(alpha: 0.15),
-                                    child: Text(
-                                      fav.name.isNotEmpty
-                                          ? fav.name[0].toUpperCase()
-                                          : '?',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.amber),
-                                    ),
-                                  ),
-                                  title: Text(fav.name,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600)),
-                                  subtitle: fav.phone != null
-                                      ? Text(fav.phone!)
-                                      : null,
-                                  onTap: () => _selectFavorite(fav),
-                                ),
-                              ),
-                              const Divider(height: 1),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                    16, 12, 16, 4),
-                                child: Text('Todos los contactos',
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 0.5)),
-                              ),
-                            ],
-                            // ── All contacts ───────────────────────────
-                            if (_filtered.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(24),
-                                child: Center(
-                                    child: Text('No se encontraron contactos')),
-                              )
-                            else
-                              ..._filtered.map(
-                                (c) => ListTile(
-                                  leading: CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: theme.colorScheme.primary
-                                        .withValues(alpha: 0.1),
-                                    child: Text(
-                                      c.displayName.isNotEmpty
-                                          ? c.displayName[0].toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: theme.colorScheme.primary),
-                                    ),
-                                  ),
-                                  title: Text(c.displayName,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600)),
-                                  subtitle: c.phones.isNotEmpty
-                                      ? Text(c.phones.first.number)
-                                      : null,
-                                  onTap: () => _selectContact(c),
-                                ),
-                              ),
-                            const SizedBox(height: 24),
-                          ],
-                        ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PermissionDeniedView extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.contacts_rounded,
-                size: 48,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.3)),
-            const SizedBox(height: 16),
-            Text(
-              'Sin acceso a contactos',
-              style: Theme.of(context).textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Habilitá el permiso en Ajustes del sistema para buscar contactos.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.5),
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -992,8 +857,7 @@ class _PaymentMethodsRequired extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 72,
-              height: 72,
+              width: 72, height: 72,
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
@@ -1032,7 +896,7 @@ class _PaymentMethodsRequired extends StatelessWidget {
   }
 }
 
-// ─── Quick payment method sheet (used from the gate) ─────────────────────────
+// ─── Quick payment method sheet ───────────────────────────────────────────────
 
 class _QuickPaymentMethodSheet extends StatefulWidget {
   final Future<void> Function(PaymentMethod) onSave;
@@ -1148,20 +1012,3 @@ class _QuickPaymentMethodSheetState extends State<_QuickPaymentMethodSheet> {
   }
 }
 
-// ─── Thousands formatter ──────────────────────────────────────────────────────
-
-class _ThousandsInputFormatter extends TextInputFormatter {
-  static final _fmt = NumberFormat('#,##0', 'es_CO');
-
-  @override
-  TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-    final formatted = _fmt.format(int.parse(digits));
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-}

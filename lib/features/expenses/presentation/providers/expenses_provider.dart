@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/db/database_service.dart';
+import '../../../../core/providers/pay_period_provider.dart';
+import '../../../../core/utils/period_utils.dart';
 import '../../data/models/expense.dart';
 import '../../data/models/expense_category.dart';
 import '../../data/models/transaction_type.dart';
@@ -9,6 +11,7 @@ import '../../data/repositories/sqflite_category_repository.dart';
 import '../../data/repositories/sqflite_expense_repository.dart';
 
 final searchActiveProvider = StateProvider<bool>((ref) => false);
+final statsCategorySheetOpenProvider = StateProvider<bool>((ref) => false);
 
 // Overridden in main() after DatabaseService is initialized
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
@@ -19,22 +22,26 @@ final expenseRepositoryProvider = Provider<ExpenseRepository>((ref) {
   return SqfliteExpenseRepository(ref.watch(databaseServiceProvider));
 });
 
-// ─── Expenses (current month) ─────────────────────────────────────────────────
+// ─── Expenses (current period) ────────────────────────────────────────────────
 
 final currentMonthExpensesProvider = StreamProvider<List<Expense>>((ref) {
-  final now = DateTime.now();
-  return ref.watch(expenseRepositoryProvider).watchMonth(
-        now.year, now.month,
+  final cutDay = ref.watch(payPeriodDayProvider).valueOrNull ?? 1;
+  final label = ref.watch(currentPeriodLabelProvider);
+  final r = PeriodUtils.range(label.year, label.month, cutDay);
+  return ref.watch(expenseRepositoryProvider).watchPeriod(
+        r.start, r.end,
         type: TransactionType.expense,
       );
 });
 
-// ─── Incomes (current month) ──────────────────────────────────────────────────
+// ─── Incomes (current period) ─────────────────────────────────────────────────
 
 final currentMonthIncomesProvider = StreamProvider<List<Expense>>((ref) {
-  final now = DateTime.now();
-  return ref.watch(expenseRepositoryProvider).watchMonth(
-        now.year, now.month,
+  final cutDay = ref.watch(payPeriodDayProvider).valueOrNull ?? 1;
+  final label = ref.watch(currentPeriodLabelProvider);
+  final r = PeriodUtils.range(label.year, label.month, cutDay);
+  return ref.watch(expenseRepositoryProvider).watchPeriod(
+        r.start, r.end,
         type: TransactionType.income,
       );
 });
@@ -98,16 +105,20 @@ final yearlyIncomesProvider = FutureProvider<List<Expense>>((ref) {
 
 final monthExpensesProvider = StreamProvider.autoDispose
     .family<List<Expense>, (int, int)>((ref, ym) {
+  final cutDay = ref.watch(payPeriodDayProvider).valueOrNull ?? 1;
+  final r = PeriodUtils.range(ym.$1, ym.$2, cutDay);
   return ref
       .watch(expenseRepositoryProvider)
-      .watchMonth(ym.$1, ym.$2, type: TransactionType.expense);
+      .watchPeriod(r.start, r.end, type: TransactionType.expense);
 });
 
 final monthIncomesProvider = StreamProvider.autoDispose
     .family<List<Expense>, (int, int)>((ref, ym) {
+  final cutDay = ref.watch(payPeriodDayProvider).valueOrNull ?? 1;
+  final r = PeriodUtils.range(ym.$1, ym.$2, cutDay);
   return ref
       .watch(expenseRepositoryProvider)
-      .watchMonth(ym.$1, ym.$2, type: TransactionType.income);
+      .watchPeriod(r.start, r.end, type: TransactionType.income);
 });
 
 typedef _YearlyStats = ({List<Expense> expenses, List<Expense> incomes});

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/utils/thousands_formatter.dart';
 import '../providers/savings_provider.dart';
 
 class SavingsScreen extends ConsumerWidget {
@@ -257,7 +257,7 @@ class _GoalFormSheetState extends ConsumerState<_GoalFormSheet> {
     _presetIndex = ex?.presetIndex ?? 7;
     _nameController = TextEditingController(text: ex?.name ?? '');
     _targetController = TextEditingController(
-      text: ex == null ? '' : _ThousandsFormatter.format(ex.targetAmount.toInt()),
+      text: ex == null ? '' : ThousandsInputFormatter.format(ex.targetAmount.toInt()),
     );
   }
 
@@ -270,8 +270,7 @@ class _GoalFormSheetState extends ConsumerState<_GoalFormSheet> {
 
   Future<void> _save() async {
     final name = _nameController.text.trim();
-    final amount = double.tryParse(
-        _targetController.text.replaceAll('.', '').replaceAll(',', ''));
+    final amount = ThousandsInputFormatter.parse(_targetController.text);
     if (name.isEmpty || amount == null || amount <= 0) return;
 
     setState(() => _isSaving = true);
@@ -381,7 +380,7 @@ class _GoalFormSheetState extends ConsumerState<_GoalFormSheet> {
           TextField(
             controller: _targetController,
             keyboardType: TextInputType.number,
-            inputFormatters: [_ThousandsFormatter()],
+            inputFormatters: [ThousandsInputFormatter()],
             decoration: InputDecoration(
               prefixText: '\$ ',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -503,8 +502,7 @@ class _ContributionSheetState extends State<_ContributionSheet> {
   }
 
   Future<void> _save() async {
-    final amount = double.tryParse(
-        _amountController.text.replaceAll('.', '').replaceAll(',', ''));
+    final amount = ThousandsInputFormatter.parse(_amountController.text);
     if (amount == null || amount <= 0) return;
     setState(() => _isSaving = true);
     await widget.ref
@@ -572,7 +570,7 @@ class _ContributionSheetState extends State<_ContributionSheet> {
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
-            inputFormatters: [_ThousandsFormatter()],
+            inputFormatters: [ThousandsInputFormatter()],
             autofocus: true,
             decoration: InputDecoration(
               prefixText: '\$ ',
@@ -605,28 +603,3 @@ class _ContributionSheetState extends State<_ContributionSheet> {
   }
 }
 
-// ─── Thousands formatter ──────────────────────────────────────────────────────
-
-class _ThousandsFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-    final formatted = format(int.tryParse(digits) ?? 0);
-    return newValue.copyWith(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-
-  static String format(int n) {
-    final s = n.toString();
-    final buf = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return buf.toString();
-  }
-}

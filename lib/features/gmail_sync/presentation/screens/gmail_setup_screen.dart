@@ -3,9 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers/biometric_provider.dart';
 import '../../../../core/providers/pay_period_provider.dart';
+import '../../../../core/services/backup_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/period_utils.dart';
 import '../../../../shared/widgets/mosca_button.dart';
+import '../../../budgets/presentation/providers/budgets_provider.dart';
+import '../../../expenses/presentation/providers/expenses_provider.dart';
+import '../../../recurring/presentation/providers/recurring_provider.dart';
+import '../../../savings/presentation/providers/savings_provider.dart';
+import '../../../shared_debts/presentation/providers/shared_debts_provider.dart';
 import '../../../splits/data/models/payment_method.dart';
 import '../../../splits/presentation/providers/splits_provider.dart';
 import '../providers/gmail_sync_provider.dart';
@@ -170,6 +176,11 @@ class GmailSetupScreen extends ConsumerWidget {
 
           // ── Payment methods ───────────────────────────────────────────
           const _PaymentMethodsCard(),
+
+          const SizedBox(height: 16),
+
+          // ── Backup ───────────────────────────────────────────────────
+          const _BackupCard(),
 
           const SizedBox(height: 16),
 
@@ -749,6 +760,175 @@ class _PayPeriodCard extends ConsumerWidget {
               children: [
                 for (final day in [5, 10, 15, 20, 25, 26, 27, 28])
                   _DayChip(day: day, selected: current == day, ref: ref),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Backup card ──────────────────────────────────────────────────────────────
+
+class _BackupCard extends ConsumerStatefulWidget {
+  const _BackupCard();
+
+  @override
+  ConsumerState<_BackupCard> createState() => _BackupCardState();
+}
+
+class _BackupCardState extends ConsumerState<_BackupCard> {
+  bool _exporting = false;
+  bool _importing = false;
+
+  Future<void> _export() async {
+    setState(() => _exporting = true);
+    try {
+      await BackupService(ref.read(databaseServiceProvider)).export();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al exportar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _import() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restaurar backup'),
+        content: const Text(
+          'Esto reemplazará TODOS tus datos actuales con los del archivo seleccionado. Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Restaurar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _importing = true);
+    try {
+      final imported = await BackupService(
+        ref.read(databaseServiceProvider),
+      ).import();
+
+      if (!imported || !mounted) return;
+
+      // Invalidate all stream providers so they re-fetch from the restored DB
+      ref.invalidate(currentMonthExpensesProvider);
+      ref.invalidate(currentMonthIncomesProvider);
+      ref.invalidate(allExpensesProvider);
+      ref.invalidate(customCategoriesProvider);
+      ref.invalidate(budgetsProvider);
+      ref.invalidate(recurringExpensesProvider);
+      ref.invalidate(savingGoalsProvider);
+      ref.invalidate(activeSharedDebtsProvider);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup restaurado exitosamente')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al restaurar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final loading = _exporting || _importing;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.backup_rounded,
+                      color: Colors.purple.shade400),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Copia de seguridad',
+                          style: theme.textTheme.titleMedium),
+                      Text(
+                        'Exporta o restaura todos tus datos',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color:
+                              theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: loading ? null : _export,
+                    icon: _exporting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.upload_rounded, size: 18),
+                    label: const Text('Exportar'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: loading ? null : _import,
+                    icon: _importing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded, size: 18),
+                    label: const Text('Restaurar'),
+                  ),
+                ),
               ],
             ),
           ],

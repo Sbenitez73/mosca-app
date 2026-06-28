@@ -1,8 +1,10 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/providers/pay_period_provider.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/utils/period_utils.dart';
 import '../../../budgets/presentation/providers/budgets_provider.dart';
 import '../../../expenses/data/models/expense.dart';
 import '../../../expenses/data/models/expense_category.dart';
@@ -19,6 +21,7 @@ class StatsScreen extends ConsumerStatefulWidget {
 class _StatsScreenState extends ConsumerState<StatsScreen> {
   late DateTime _month;
   bool _showIncomeBreakdown = false;
+  bool _fiscalMonthInitialized = false;
 
   @override
   void initState() {
@@ -30,14 +33,29 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   void _prev() => setState(() => _month = DateTime(_month.year, _month.month - 1));
   void _next() => setState(() => _month = DateTime(_month.year, _month.month + 1));
 
-  bool get _isCurrentMonth {
-    final now = DateTime.now();
-    return _month.year == now.year && _month.month == now.month;
-  }
+  bool _isCurrentFiscalMonth(({int year, int month}) currentPeriod) =>
+      _month.year == currentPeriod.year && _month.month == currentPeriod.month;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Snap to current fiscal period once payPeriodDayProvider loads.
+    // initState can't access it (async), so we correct on the first build where it's available.
+    final cutDayAsync = ref.watch(payPeriodDayProvider);
+    if (!_fiscalMonthInitialized && cutDayAsync.hasValue) {
+      _fiscalMonthInitialized = true;
+      final cutDay = cutDayAsync.value!;
+      final label = PeriodUtils.currentPeriodLabel(DateTime.now(), cutDay);
+      final fiscalMonth = DateTime(label.year, label.month);
+      if (fiscalMonth != _month) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) { if (mounted) setState(() => _month = fiscalMonth); },
+        );
+      }
+    }
+
+    final currentFiscalPeriod = ref.watch(currentPeriodLabelProvider);
     final ym = (_month.year, _month.month);
     final prevDate = DateTime(_month.year, _month.month - 1);
     final prevYm = (prevDate.year, prevDate.month);
@@ -68,11 +86,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             IconButton(
               icon: Icon(
                 Icons.chevron_right_rounded,
-                color: _isCurrentMonth
+                color: _isCurrentFiscalMonth(currentFiscalPeriod)
                     ? theme.colorScheme.onSurface.withValues(alpha: 0.25)
                     : null,
               ),
-              onPressed: _isCurrentMonth ? null : _next,
+              onPressed: _isCurrentFiscalMonth(currentFiscalPeriod) ? null : _next,
             ),
           ],
         ),
@@ -339,6 +357,25 @@ class _ComparisonChart extends StatelessWidget {
                   maxY: maxY,
                   gridData: const FlGridData(show: false),
                   borderData: FlBorderData(show: false),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => Colors.transparent,
+                      tooltipBorder: BorderSide.none,
+                      tooltipPadding: EdgeInsets.zero,
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        if (rod.toY == 0) return null;
+                        final color = rodIndex == 0 ? _expenseColor : _incomeColor;
+                        return BarTooltipItem(
+                          CurrencyFormatter.format(rod.toY),
+                          TextStyle(
+                            color: color,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                   titlesData: FlTitlesData(
                     leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                     rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),

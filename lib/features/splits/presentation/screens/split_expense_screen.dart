@@ -1,12 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/thousands_formatter.dart';
@@ -16,6 +15,8 @@ import '../../data/models/expense_split.dart';
 import '../../data/models/payment_method.dart';
 import '../../data/models/split_contact.dart';
 import '../providers/splits_provider.dart';
+import '../utils/reimbursement_helper.dart';
+import '../utils/whatsapp_sender.dart';
 
 class SplitExpenseScreen extends ConsumerStatefulWidget {
   final Expense expense;
@@ -103,41 +104,34 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
     return buffer.toString().trim();
   }
 
-  /// Strips all non-digit characters (including +) from a phone number.
-  String _normalizePhone(String phone) =>
-      phone.replaceAll(RegExp(r'[^\d]'), '');
-
   Future<void> _shareWithPerson(
-      ExpenseSplit split, List<PaymentMethod> methods) async {
-    final text = _buildMessage(split, methods);
-    final phone = split.phone?.trim();
-    bool sent = false;
+      ExpenseSplit split, List<PaymentMethod> methods, Rect? origin) async {
+    try {
+      await sendViaWhatsApp(
+        text: _buildMessage(split, methods),
+        phone: split.phone,
+        photoPaths: _photoPath != null ? [_photoPath!] : [],
+        sharePositionOrigin: origin,
+      );
 
-    if (phone != null && phone.isNotEmpty) {
-      final digits = _normalizePhone(phone);
-      if (digits.isNotEmpty) {
-        // Try WhatsApp deep link directly to the conversation
-        final waUri = Uri.parse(
-            'https://wa.me/$digits?text=${Uri.encodeComponent(text)}');
-        if (await canLaunchUrl(waUri)) {
-          await launchUrl(waUri, mode: LaunchMode.externalApplication);
-          sent = true;
-        }
+      if (!mounted) return;
+      final paid = await maybeRegisterReimbursement(
+        context, ref,
+        personName: split.name,
+        amount: split.amount,
+      );
+      if (paid && mounted) {
+        await ref.read(splitRepositoryProvider).markSettled(split.id!);
+        await NotificationService.cancelSplitReminder(split.id!);
+      }
+      HapticFeedback.lightImpact();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al enviar: $e')),
+        );
       }
     }
-
-    if (!sent) {
-      // Fallback: system share sheet (no phone or WhatsApp not installed)
-      if (_photoPath != null && File(_photoPath!).existsSync()) {
-        await Share.shareXFiles([XFile(_photoPath!)], text: text);
-      } else {
-        await Share.share(text);
-      }
-    }
-
-    await ref.read(splitRepositoryProvider).markSettled(split.id!);
-    await NotificationService.cancelSplitReminder(split.id!);
-    HapticFeedback.lightImpact();
   }
 
   void _showAddParticipantSheet({
@@ -358,19 +352,35 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                   Text('Participantes', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 10),
 
-                  // ── Quick split chips ÷2…÷6 ──────────────────────────
+                  // ── Quick split ───────────────────────────────────────
+                  FilledButton.tonal(
+                    onPressed: () => _quickSplit(2, splits),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.call_split_rounded, size: 18),
+                        SizedBox(width: 8),
+                        Text('Dividir a la mitad (entre 2)',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
                         Text(
-                          'Dividir en partes iguales:',
+                          'Otras divisiones:',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        for (final n in [2, 3, 4, 5, 6])
+                        for (final n in [3, 4, 5, 6])
                           Padding(
                             padding: const EdgeInsets.only(right: 6),
                             child: ActionChip(
@@ -452,7 +462,7 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                     ...splits.map((s) => _SplitTile(
                           split: s,
                           methods: methodsAsync.valueOrNull ?? [],
-                          onShare: () => _shareWithPerson(s, methodsAsync.valueOrNull ?? []),
+                          onShare: (origin) => _shareWithPerson(s, methodsAsync.valueOrNull ?? [], origin),
                           onEdit: () => _showAddParticipantSheet(
                               existing: s,
                               expenseId: expense.id!,
@@ -508,17 +518,19 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
 class _SplitTile extends ConsumerWidget {
   final ExpenseSplit split;
   final List<PaymentMethod> methods;
-  final VoidCallback onShare;
+  final Future<void> Function(Rect? origin) onShare;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  const _SplitTile({
+  _SplitTile({
     required this.split,
     required this.methods,
     required this.onShare,
     required this.onEdit,
     required this.onDelete,
   });
+
+  final GlobalKey _btnKey = GlobalKey();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -586,7 +598,14 @@ class _SplitTile extends ConsumerWidget {
               )
             else
               FilledButton.tonal(
-                onPressed: onShare,
+                key: _btnKey,
+                onPressed: () {
+                  final box =
+                      _btnKey.currentContext?.findRenderObject() as RenderBox?;
+                  final origin =
+                      box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+                  onShare(origin);
+                },
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   minimumSize: Size.zero,
@@ -651,6 +670,15 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
   late final TextEditingController _amountCtrl;
   bool _saving = false;
   String? _error;
+
+  Future<void> _pickContact() async {
+    final (name, phone) = await pickContact();
+    if (!mounted) return;
+    setState(() {
+      if (name.isNotEmpty) _nameCtrl.text = name;
+      _phoneCtrl.text = phone;
+    });
+  }
 
   double get _maxAmount => widget.expenseAmount - widget.alreadyAssigned;
 
@@ -768,6 +796,9 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
                     label: Text(fav.name),
                     onPressed: () => setState(() {
                       _nameCtrl.text = fav.name;
+                      if (fav.phone?.isNotEmpty == true) {
+                        _phoneCtrl.text = fav.phone!;
+                      }
                     }),
                   ),
                 )).toList(),
@@ -787,20 +818,41 @@ class _ParticipantSheetState extends ConsumerState<_ParticipantSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _phoneCtrl,
-            keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: 'WhatsApp (con código de país)',
-              hintText: '+57 300 000 0000',
-              prefixIcon: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                child: Text('📱', style: TextStyle(fontSize: 16)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: 'WhatsApp',
+                    hintText: '+57 300 000 0000',
+                    prefixIcon: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      child: Text('📱', style: TextStyle(fontSize: 16)),
+                    ),
+                    helperText: 'Al cobrar se abre directo su chat',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
               ),
-              helperText: 'Al cobrar se abre directo su chat',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: IconButton.outlined(
+                  onPressed: _pickContact,
+                  icon: const Icon(Icons.contacts_rounded),
+                  tooltip: 'Elegir de contactos',
+                  style: IconButton.styleFrom(
+                    fixedSize: const Size(52, 52),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(

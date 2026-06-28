@@ -5,9 +5,11 @@ import '../../../../core/providers/biometric_provider.dart';
 import '../../../../core/providers/pay_period_provider.dart';
 import '../../../../core/services/backup_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/date_formatter.dart';
 import '../../../../core/utils/period_utils.dart';
 import '../../../../shared/widgets/mosca_button.dart';
 import '../../../budgets/presentation/providers/budgets_provider.dart';
+import '../../../expenses/data/models/expense_category.dart';
 import '../../../expenses/presentation/providers/expenses_provider.dart';
 import '../../../recurring/presentation/providers/recurring_provider.dart';
 import '../../../savings/presentation/providers/savings_provider.dart';
@@ -781,11 +783,16 @@ class _BackupCard extends ConsumerStatefulWidget {
 class _BackupCardState extends ConsumerState<_BackupCard> {
   bool _exporting = false;
   bool _importing = false;
+  final _exportKey = GlobalKey();
 
   Future<void> _export() async {
     setState(() => _exporting = true);
     try {
-      await BackupService(ref.read(databaseServiceProvider)).export();
+      final box = _exportKey.currentContext?.findRenderObject() as RenderBox?;
+      final origin = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+      await BackupService(ref.read(databaseServiceProvider)).export(
+        sharePositionOrigin: origin,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -798,40 +805,154 @@ class _BackupCardState extends ConsumerState<_BackupCard> {
   }
 
   Future<void> _import() async {
+    // Step 1: pick file and extract metadata — no DB changes yet.
+    setState(() => _importing = true);
+    BackupPreview? preview;
+    try {
+      preview = await BackupService(ref.read(databaseServiceProvider)).preview();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al leer el archivo: $e')),
+        );
+      }
+      setState(() => _importing = false);
+      return;
+    }
+    setState(() => _importing = false);
+
+    if (preview == null || !mounted) return; // user cancelled file picker
+
+    // Step 2: show confirmation with real backup metadata.
+    // Capture in a non-nullable local so the dialog builder can use it safely.
+    final p = preview;
+    final backupDate = DateFormatter.fullDate(p.createdAt);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Restaurar backup'),
-        content: const Text(
-          'Esto reemplazará TODOS tus datos actuales con los del archivo seleccionado. Esta acción no se puede deshacer.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          title: const Text('¿Restaurar este backup?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Backup summary
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.backup_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Backup del ${_capitalize(backupDate)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${p.expenseCount} gastos · '
+                      '${p.categoryCount} categorías',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface
+                            .withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              // Age warning
+              if (p.createdAt.isBefore(
+                    DateTime.now().subtract(const Duration(days: 7))))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.schedule_rounded,
+                          size: 15,
+                          color: theme.colorScheme.error),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Este backup tiene más de 7 días. '
+                          'Puede que no incluya tus datos más recientes.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // Destructive action warning
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 15,
+                      color: theme.colorScheme.error),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Todos tus datos actuales serán reemplazados. '
+                      'Esta acción no se puede deshacer.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Restaurar'),
-          ),
-        ],
-      ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.colorScheme.error,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Restaurar de todas formas'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed != true || !mounted) return;
 
+    // Step 3: commit the restore.
     setState(() => _importing = true);
     try {
-      final imported = await BackupService(
-        ref.read(databaseServiceProvider),
-      ).import();
+      await BackupService(ref.read(databaseServiceProvider)).restore(preview);
 
-      if (!imported || !mounted) return;
+      if (!mounted) return;
 
-      // Invalidate all stream providers so they re-fetch from the restored DB
+      // Re-register custom categories so fromKey() resolves them correctly.
+      final restoredCats = await ref.read(categoryRepositoryProvider).getAll();
+      ExpenseCategory.registerCustom(restoredCats);
+
+      // Reload all providers from the restored DB.
       ref.invalidate(currentMonthExpensesProvider);
       ref.invalidate(currentMonthIncomesProvider);
       ref.invalidate(allExpensesProvider);
@@ -856,6 +977,9 @@ class _BackupCardState extends ConsumerState<_BackupCard> {
       if (mounted) setState(() => _importing = false);
     }
   }
+
+  String _capitalize(String s) =>
+      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
   @override
   Widget build(BuildContext context) {
@@ -904,6 +1028,7 @@ class _BackupCardState extends ConsumerState<_BackupCard> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
+                    key: _exportKey,
                     onPressed: loading ? null : _export,
                     icon: _exporting
                         ? const SizedBox(

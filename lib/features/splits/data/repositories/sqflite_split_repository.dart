@@ -21,6 +21,20 @@ class SqfliteSplitRepository implements SplitRepository {
   }
 
   @override
+  Stream<Set<int>> watchSplitExpenseIds() async* {
+    yield await _fetchSplitExpenseIds();
+    await for (final _ in _change.stream) {
+      yield await _fetchSplitExpenseIds();
+    }
+  }
+
+  Future<Set<int>> _fetchSplitExpenseIds() async {
+    final rows = await _db
+        .rawQuery('SELECT DISTINCT expense_id FROM expense_splits');
+    return rows.map((r) => r['expense_id'] as int).toSet();
+  }
+
+  @override
   Future<List<ExpenseSplit>> getByExpense(int expenseId) async {
     final rows = await _db.query(
       'expense_splits',

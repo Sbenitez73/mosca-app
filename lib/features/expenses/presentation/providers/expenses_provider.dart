@@ -12,6 +12,7 @@ import '../../data/repositories/sqflite_expense_repository.dart';
 
 final searchActiveProvider = StateProvider<bool>((ref) => false);
 final statsCategorySheetOpenProvider = StateProvider<bool>((ref) => false);
+final expenseSelectModeProvider = StateProvider<bool>((ref) => false);
 
 // Overridden in main() after DatabaseService is initialized
 final databaseServiceProvider = Provider<DatabaseService>((ref) {

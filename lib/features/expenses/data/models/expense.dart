@@ -6,7 +6,9 @@ class Expense {
   final int? id;
   final double amount;
   final String currency;
-  final ExpenseCategory category;
+  // Stored as raw key so the category is always resolved against the
+  // current registry at access time, not at load time.
+  final String categoryKey;
   final String description;
   final String? notes;
   final DateTime date;
@@ -18,11 +20,29 @@ class Expense {
   final String? gmailMessageId;
   final String? receiptPhotoPath;
 
-  const Expense({
+  Expense({
     this.id,
     required this.amount,
     this.currency = 'COP',
-    required this.category,
+    required ExpenseCategory category,
+    required this.description,
+    this.notes,
+    required this.date,
+    this.source = ExpenseSource.manual,
+    this.type = TransactionType.expense,
+    this.bankName,
+    this.cardLastFour,
+    this.merchantName,
+    this.gmailMessageId,
+    this.receiptPhotoPath,
+  }) : categoryKey = category.key;
+
+  // Named constructor for fromMap — avoids resolving the category at load time.
+  Expense._fromKey({
+    this.id,
+    required this.amount,
+    this.currency = 'COP',
+    required this.categoryKey,
     required this.description,
     this.notes,
     required this.date,
@@ -34,6 +54,9 @@ class Expense {
     this.gmailMessageId,
     this.receiptPhotoPath,
   });
+
+  // Always resolved against the current registry — never stale.
+  ExpenseCategory get category => ExpenseCategory.fromKey(categoryKey);
 
   bool get isIncome => type == TransactionType.income;
 
@@ -55,11 +78,11 @@ class Expense {
     String? gmailMessageId,
     String? receiptPhotoPath,
   }) {
-    return Expense(
+    return Expense._fromKey(
       id: id == _unset ? this.id : id as int?,
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,
-      category: category ?? this.category,
+      categoryKey: category?.key ?? categoryKey,
       description: description ?? this.description,
       notes: notes ?? this.notes,
       date: date ?? this.date,
@@ -77,7 +100,7 @@ class Expense {
         if (id != null) 'id': id,
         'amount': amount,
         'currency': currency,
-        'category': category.name,
+        'category': categoryKey,
         'description': description,
         'notes': notes,
         'date': date.millisecondsSinceEpoch,
@@ -90,11 +113,11 @@ class Expense {
         'receipt_photo_path': receiptPhotoPath,
       };
 
-  factory Expense.fromMap(Map<String, dynamic> map) => Expense(
+  factory Expense.fromMap(Map<String, dynamic> map) => Expense._fromKey(
         id: map['id'] as int?,
         amount: (map['amount'] as num).toDouble(),
         currency: map['currency'] as String? ?? 'COP',
-        category: ExpenseCategory.fromKey(map['category'] as String? ?? 'other'),
+        categoryKey: map['category'] as String? ?? 'other',
         description: map['description'] as String? ?? '',
         notes: map['notes'] as String?,
         date: DateTime.fromMillisecondsSinceEpoch(map['date'] as int),

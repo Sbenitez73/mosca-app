@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Rect;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,20 +9,34 @@ import 'package:sqflite/sqflite.dart';
 
 import '../db/database_service.dart';
 
+// Metadata extracted from a backup file before committing the restore.
+class BackupPreview {
+  final DateTime createdAt;
+  final int expenseCount;
+  final int categoryCount;
+  final Map<String, dynamic> _decoded;
+
+  BackupPreview._({
+    required this.createdAt,
+    required this.expenseCount,
+    required this.categoryCount,
+    required Map<String, dynamic> decoded,
+  }) : _decoded = decoded;
+}
+
 class BackupService {
   BackupService(this._dbService);
 
   final DatabaseService _dbService;
 
   static const _version = 1;
-  // Settings that belong to the device, not the user's data.
   static const _deviceSettings = {'onboarding_done', 'biometric_enabled'};
 
   Database get _db => _dbService.db;
 
   // ─── Export ───────────────────────────────────────────────────────────────
 
-  Future<void> export() async {
+  Future<void> export({Rect? sharePositionOrigin}) async {
     final allSettings = await _db.query('settings');
     final userSettings =
         allSettings.where((r) => !_deviceSettings.contains(r['key'])).toList();
@@ -53,24 +68,26 @@ class BackupService {
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'application/json', name: name)],
       subject: name,
+      sharePositionOrigin: sharePositionOrigin,
     );
   }
 
   // ─── Import ───────────────────────────────────────────────────────────────
 
-  /// Returns true if the user selected a file and import succeeded.
-  /// Throws on parse / version errors so the caller can show a message.
-  Future<bool> import() async {
+  /// Lets the user pick a backup file and returns its metadata without
+  /// writing anything to the DB. Returns null if the user cancelled.
+  /// Throws on parse / version errors.
+  Future<BackupPreview?> preview() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
       withData: true,
     );
 
-    if (result == null || result.files.isEmpty) return false;
+    if (result == null || result.files.isEmpty) return null;
 
     final file = result.files.first;
-    String json;
+    final String json;
     if (file.bytes != null) {
       json = utf8.decode(file.bytes!);
     } else if (file.path != null) {
@@ -90,6 +107,29 @@ class BackupService {
     if (version != _version) {
       throw Exception('Versión del backup no compatible (v$version)');
     }
+
+    final createdAtRaw = decoded['created_at'] as String?;
+    final createdAt = createdAtRaw != null
+        ? DateTime.tryParse(createdAtRaw) ?? DateTime.fromMillisecondsSinceEpoch(0)
+        : DateTime.fromMillisecondsSinceEpoch(0);
+
+    final expenseCount =
+        (decoded['expenses'] as List?)?.length ?? 0;
+    final categoryCount =
+        (decoded['categories'] as List?)?.length ?? 0;
+
+    return BackupPreview._(
+      createdAt: createdAt,
+      expenseCount: expenseCount,
+      categoryCount: categoryCount,
+      decoded: decoded,
+    );
+  }
+
+  /// Replaces all local data with the contents of [preview].
+  /// Call only after the user has confirmed in the UI.
+  Future<void> restore(BackupPreview preview) async {
+    final decoded = preview._decoded;
 
     await _db.transaction((txn) async {
       // Delete dependents first, then parents
@@ -144,8 +184,6 @@ class BackupService {
         }
       }
     });
-
-    return true;
   }
 
   String _p(int n) => n.toString().padLeft(2, '0');

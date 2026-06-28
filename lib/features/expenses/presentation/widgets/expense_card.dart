@@ -9,13 +9,21 @@ import '../../data/models/transaction_type.dart';
 class ExpenseCard extends StatelessWidget {
   final Expense expense;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final VoidCallback? onDelete;
+  final bool selectionMode;
+  final bool selected;
+  final bool hasSplits;
 
   const ExpenseCard({
     super.key,
     required this.expense,
     this.onTap,
+    this.onLongPress,
     this.onDelete,
+    this.selectionMode = false,
+    this.selected = false,
+    this.hasSplits = false,
   });
 
   static const _transferColor = Color(0xFF2196F3);
@@ -29,24 +37,51 @@ class ExpenseCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            if (isTransfer)
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _transferColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.swap_horiz_rounded,
-                    color: _transferColor, size: 22),
-              )
-            else
-              CategoryBadge(category: expense.category),
+            Stack(
+              children: [
+                if (isTransfer)
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: _transferColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.swap_horiz_rounded,
+                        color: _transferColor, size: 22),
+                  )
+                else
+                  CategoryBadge(category: expense.category),
+                if (selectionMode)
+                  Positioned.fill(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: selected
+                            ? colorScheme.primary
+                            : colorScheme.surface.withValues(alpha: 0.7),
+                        border: Border.all(
+                          color: selected
+                              ? colorScheme.primary
+                              : colorScheme.outline.withValues(alpha: 0.4),
+                          width: 2,
+                        ),
+                      ),
+                      child: selected
+                          ? const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 20)
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -69,6 +104,13 @@ class ExpenseCard extends StatelessWidget {
                           padding: const EdgeInsets.only(left: 4),
                           child: Icon(Icons.mark_email_read_rounded,
                               size: 14, color: colorScheme.secondary),
+                        ),
+                      if (hasSplits)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(Icons.call_split_rounded,
+                              size: 14,
+                              color: colorScheme.primary.withValues(alpha: 0.7)),
                         ),
                     ],
                   ),

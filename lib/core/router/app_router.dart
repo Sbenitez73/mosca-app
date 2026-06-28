@@ -16,6 +16,7 @@ import '../../features/gmail_sync/presentation/screens/gmail_setup_screen.dart';
 import '../../features/projection/presentation/screens/projection_screen.dart';
 import '../../features/shared_debts/presentation/screens/shared_debts_screen.dart';
 import '../../features/splits/presentation/screens/split_expense_screen.dart';
+import '../../features/splits/presentation/screens/multi_split_screen.dart';
 import '../../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../../features/stats/presentation/screens/stats_screen.dart';
 import '../providers/onboarding_provider.dart';
@@ -101,6 +102,16 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/multi-split',
+      pageBuilder: (context, state) {
+        final expenses = state.extra as List<Expense>;
+        return MaterialPage(
+          fullscreenDialog: true,
+          child: MultiSplitScreen(expenses: expenses),
+        );
+      },
+    ),
+    GoRoute(
       path: '/quick-add',
       pageBuilder: (context, state) => const MaterialPage(
         fullscreenDialog: true,
@@ -140,7 +151,8 @@ class _Shell extends ConsumerWidget {
     final location = GoRouterState.of(context).uri.path;
     final isSearching = ref.watch(searchActiveProvider);
     final isCategorySheetOpen = ref.watch(statsCategorySheetOpenProvider);
-    final showFab = !_noFabRoutes.contains(location) && !isSearching && !isCategorySheetOpen;
+    final isSelectMode = ref.watch(expenseSelectModeProvider);
+    final showFab = !_noFabRoutes.contains(location) && !isSearching && !isCategorySheetOpen && !isSelectMode;
 
     return Scaffold(
       body: child,

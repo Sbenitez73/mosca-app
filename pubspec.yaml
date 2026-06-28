@@ -58,6 +58,7 @@ dependencies:
   image_picker: ^1.1.2
   share_plus: ^10.1.0
   file_picker: ^8.1.2
+  flutter_contacts: ^2.1.0
 
   cupertino_icons: ^1.0.8
   url_launcher: ^6.3.2
@@ -81,8 +82,8 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/splash/splash_icon.png"
-  background_color: "#0A7E4A"
+  image_path: "assets/logo/icon_1024.png"
+  remove_alpha_ios: true
   adaptive_icon_background: "#0A7E4A"
   adaptive_icon_foreground: "assets/splash/splash_icon.png"
   min_sdk_android: 21

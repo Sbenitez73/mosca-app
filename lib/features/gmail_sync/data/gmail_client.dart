@@ -25,7 +25,17 @@ class GmailClient {
 
   GoogleSignIn get googleSignIn => _googleSignIn;
 
-  Future<GoogleSignInAccount?> signIn() => _googleSignIn.signIn();
+  Future<GoogleSignInAccount?> signIn() async {
+    final account = await _googleSignIn.signIn();
+    if (account != null) {
+      final granted = await _googleSignIn.requestScopes(
+        ['https://www.googleapis.com/auth/gmail.readonly'],
+      );
+      if (!granted) throw Exception('Permiso de Gmail no otorgado');
+    }
+    return account;
+  }
+
   Future<void> signOut() => _googleSignIn.signOut();
   Future<bool> get isSignedIn => _googleSignIn.isSignedIn();
   GoogleSignInAccount? get currentUser => _googleSignIn.currentUser;
@@ -69,6 +79,13 @@ class GmailClient {
     GoogleSignInAccount? account = _googleSignIn.currentUser;
     account ??= await _googleSignIn.signInSilently();
     if (account == null) throw Exception('Gmail not signed in');
+
+    // Ensure the gmail scope is still granted (it may be missing on restored sessions).
+    final hasScope = await _googleSignIn.requestScopes(
+      ['https://www.googleapis.com/auth/gmail.readonly'],
+    );
+    if (!hasScope) throw Exception('Permiso de Gmail revocado. Volvé a conectar la cuenta.');
+
     final auth = await account.authentication;
     final token = auth.accessToken;
     if (token == null) throw Exception('Failed to get access token');

@@ -16,6 +16,10 @@ final splitsForExpenseProvider = StreamProvider.autoDispose
   return ref.watch(splitRepositoryProvider).watchByExpense(expenseId);
 });
 
+final splitExpenseIdsProvider = StreamProvider<Set<int>>((ref) {
+  return ref.watch(splitRepositoryProvider).watchSplitExpenseIds();
+});
+
 // ── Payment methods ──────────────────────────────────────────────────────────
 
 final paymentMethodsProvider =

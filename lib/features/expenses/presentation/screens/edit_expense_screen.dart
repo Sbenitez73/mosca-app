@@ -10,6 +10,8 @@ import '../../data/models/expense_category.dart';
 import '../../data/models/expense_source.dart';
 import '../../data/models/transaction_type.dart';
 import '../providers/expenses_provider.dart';
+import '../../../splits/data/models/expense_split.dart';
+import '../../../splits/presentation/providers/splits_provider.dart';
 
 class EditExpenseScreen extends ConsumerStatefulWidget {
   final Expense expense;
@@ -168,6 +170,16 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
     final allCategories = ref.watch(allCategoriesProvider);
     final allIncomeCategories = ref.watch(allIncomeCategoriesProvider);
 
+    final expenseId = widget.expense.id;
+    final splits = (expenseId != null
+            ? ref.watch(splitsForExpenseProvider(expenseId)).valueOrNull
+            : null) ??
+        const <ExpenseSplit>[];
+    final hasSplits = splits.isNotEmpty;
+    final fullyReimbursed = hasSplits && splits.every((s) => s.settled);
+    final partiallyReimbursed =
+        hasSplits && !fullyReimbursed && splits.any((s) => s.settled);
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
@@ -183,14 +195,14 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
             ),
           IconButton(
             icon: const Icon(Icons.delete_outline_rounded),
-            color: colorScheme.error,
-            onPressed: _isSaving ? null : () => _delete(context),
-            tooltip: 'Eliminar',
+            color: fullyReimbursed ? colorScheme.onSurface.withValues(alpha: 0.3) : colorScheme.error,
+            onPressed: (_isSaving || fullyReimbursed) ? null : () => _delete(context),
+            tooltip: fullyReimbursed ? 'No se puede eliminar un gasto reembolsado' : 'Eliminar',
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: TextButton(
-              onPressed: _isSaving ? null : _save,
+              onPressed: (_isSaving || fullyReimbursed) ? null : _save,
               child: _isSaving
                   ? const SizedBox(
                       width: 18,
@@ -212,6 +224,22 @@ class _EditExpenseScreenState extends ConsumerState<EditExpenseScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          // ── Reimbursement banner ─────────────────────────────────────────
+          if (fullyReimbursed) ...[
+            _ReimbursementBanner(
+              icon: Icons.check_circle_rounded,
+              label: 'Completamente reembolsado',
+              color: const Color(0xFF4CAF50),
+            ),
+            const SizedBox(height: 16),
+          ] else if (partiallyReimbursed) ...[
+            _ReimbursementBanner(
+              icon: Icons.timelapse_rounded,
+              label: 'Parcialmente reembolsado',
+              color: colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+          ],
           // ── Monto ────────────────────────────────────────────────────────
           Text(
             'Monto',
@@ -469,6 +497,44 @@ class _EditDateRow extends StatelessWidget {
           onPressed: () => _pick(context),
         ),
       ],
+    );
+  }
+}
+
+class _ReimbursementBanner extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _ReimbursementBanner({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

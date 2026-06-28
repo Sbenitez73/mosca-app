@@ -15,9 +15,13 @@ class SqfliteCategoryRepository implements CategoryRepository {
 
   @override
   Stream<List<ExpenseCategory>> watchAll() async* {
-    yield await getAll();
+    final initial = await getAll();
+    ExpenseCategory.registerCustom(initial);
+    yield initial;
     await for (final _ in _changeController.stream) {
-      yield await getAll();
+      final cats = await getAll();
+      ExpenseCategory.registerCustom(cats);
+      yield cats;
     }
   }
 

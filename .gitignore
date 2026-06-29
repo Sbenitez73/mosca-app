@@ -53,3 +53,5 @@ app.*.map.json
 secrets.env
 lib/core/config/app_secrets.dart
 ios/Runner/GoogleService-Info.plist
+
+.claude

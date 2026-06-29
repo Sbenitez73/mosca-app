@@ -29,6 +29,7 @@ class SplitExpenseScreen extends ConsumerStatefulWidget {
 class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
   String? _photoPath;
   bool _savingPhoto = false;
+  bool _editing = false;
 
   @override
   void initState() {
@@ -180,20 +181,22 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
     final base = (total ~/ n).toDouble();
     final remainder = (total % n).toDouble();
     final repo = ref.read(splitRepositoryProvider);
+    // n = total people including the user, so we create n-1 participants.
+    final othersCount = n - 1;
 
-    if (currentSplits.length == n) {
+    if (currentSplits.length == othersCount) {
       // Redistribute existing splits keeping names
-      for (var i = 0; i < n; i++) {
+      for (var i = 0; i < othersCount; i++) {
         final amount = base + (i == 0 ? remainder : 0);
         await repo.save(currentSplits[i].copyWith(amount: amount));
       }
     } else {
-      // Delete all and create n placeholders
+      // Delete all and create othersCount placeholders
       for (final s in currentSplits) {
         await repo.delete(s.id!);
         await NotificationService.cancelSplitReminder(s.id!);
       }
-      for (var i = 1; i <= n; i++) {
+      for (var i = 1; i <= othersCount; i++) {
         final amount = base + (i == 1 ? remainder : 0);
         await repo.save(ExpenseSplit(
           expenseId: widget.expense.id!,
@@ -231,11 +234,103 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
       return _PaymentMethodsRequired(onAdd: _showAddPaymentMethodSheet);
     }
 
+    // Read-only when at least one participant exists and nobody is over-charged.
+    // The leftover is implicitly the user's own share — no need to add themselves.
+    // _editing lets the user temporarily unlock the screen to make corrections.
+    final currentSplits = splitsAsync.valueOrNull ?? [];
+    final currentAssigned = currentSplits.fold(0.0, (s, e) => s + e.amount);
+    final readOnly = !_editing &&
+        currentSplits.isNotEmpty &&
+        currentAssigned <= expense.amount + 0.5;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Dividir gasto')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
         children: [
+          // ── Read-only banner ────────────────────────────────────────────
+          if (readOnly) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF4CAF50).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.lock_outline_rounded,
+                      size: 16, color: Color(0xFF4CAF50)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Gasto dividido — solo lectura',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF4CAF50),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _editing = true),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF4CAF50),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Editar',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          // ── Editing banner ──────────────────────────────────────────────
+          if (_editing) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.edit_rounded,
+                      size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Modo edición',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _editing = false),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.colorScheme.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Listo',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           // ── Expense header ──────────────────────────────────────────────
           Card(
             child: Padding(
@@ -278,60 +373,65 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
           // ── Receipt photo ───────────────────────────────────────────────
           Text('Factura', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          GestureDetector(
-            onTap: _showPhotoOptions,
-            child: _savingPhoto
-                ? const SizedBox(
-                    height: 100,
-                    child: Center(child: CircularProgressIndicator()))
-                : _photoPath != null && File(_photoPath!).existsSync()
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Stack(
-                          children: [
-                            Image.file(File(_photoPath!),
-                                height: 160,
-                                width: double.infinity,
-                                fit: BoxFit.cover),
-                            Positioned(
-                              top: 8, right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(8)),
-                                child: const Icon(Icons.edit_rounded,
-                                    color: Colors.white, size: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Container(
-                        height: 90,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: theme.colorScheme.outline.withValues(alpha: 0.4)),
-                          borderRadius: BorderRadius.circular(12),
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.04),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_photo_alternate_rounded,
-                                color: theme.colorScheme.primary, size: 28),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Agregar foto de la factura',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+          if (_savingPhoto)
+            const SizedBox(
+                height: 100,
+                child: Center(child: CircularProgressIndicator()))
+          else if (_photoPath != null && File(_photoPath!).existsSync())
+            GestureDetector(
+              onTap: readOnly ? null : _showPhotoOptions,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  children: [
+                    Image.file(File(_photoPath!),
+                        height: 160,
+                        width: double.infinity,
+                        fit: BoxFit.cover),
+                    if (!readOnly)
+                      Positioned(
+                        top: 8, right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.edit_rounded,
+                              color: Colors.white, size: 16),
                         ),
                       ),
-          ),
+                  ],
+                ),
+              ),
+            )
+          else if (!readOnly)
+            GestureDetector(
+              onTap: _showPhotoOptions,
+              child: Container(
+                height: 90,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                      color: theme.colorScheme.outline.withValues(alpha: 0.4)),
+                  borderRadius: BorderRadius.circular(12),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.04),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_photo_alternate_rounded,
+                        color: theme.colorScheme.primary, size: 28),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Agregar foto de la factura',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           const SizedBox(height: 24),
 
@@ -352,49 +452,50 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                   Text('Participantes', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 10),
 
-                  // ── Quick split ───────────────────────────────────────
-                  FilledButton.tonal(
-                    onPressed: () => _quickSplit(2, splits),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 44),
+                  // ── Quick split (oculto en solo lectura) ──────────────
+                  if (!readOnly) ...[
+                    FilledButton.tonal(
+                      onPressed: () => _quickSplit(2, splits),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 44),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.call_split_rounded, size: 18),
+                          SizedBox(width: 8),
+                          Text('Dividir a la mitad (entre 2)',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                        ],
+                      ),
                     ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.call_split_rounded, size: 18),
-                        SizedBox(width: 8),
-                        Text('Dividir a la mitad (entre 2)',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        Text(
-                          'Otras divisiones:',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        for (final n in [3, 4, 5, 6])
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ActionChip(
-                              label: Text('÷$n',
-                                  style: const TextStyle(fontWeight: FontWeight.w600)),
-                              onPressed: () => _quickSplit(n, splits),
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Text(
+                            'Otras divisiones:',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                             ),
                           ),
-                      ],
+                          const SizedBox(width: 8),
+                          for (final n in [3, 4, 5, 6])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ActionChip(
+                                label: Text('÷$n',
+                                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                                onPressed: () => _quickSplit(n, splits),
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                  ],
 
                   // ── Split summary bar ─────────────────────────────────
                   if (splits.isNotEmpty)
@@ -430,7 +531,7 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                                   ? 'Excede el total por ${CurrencyFormatter.format(remaining.abs())}'
                                   : isBalanced
                                       ? 'División completa — suma el total exacto'
-                                      : 'Asignado ${CurrencyFormatter.format(assignedTotal)} / ${CurrencyFormatter.format(expense.amount)} · Faltan ${CurrencyFormatter.format(remaining)}',
+                                      : 'Tu parte: ${CurrencyFormatter.format(remaining)}',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: isOver
                                     ? theme.colorScheme.error
@@ -462,6 +563,7 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                     ...splits.map((s) => _SplitTile(
                           split: s,
                           methods: methodsAsync.valueOrNull ?? [],
+                          readOnly: readOnly,
                           onShare: (origin) => _shareWithPerson(s, methodsAsync.valueOrNull ?? [], origin),
                           onEdit: () => _showAddParticipantSheet(
                               existing: s,
@@ -471,16 +573,62 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
                               ref.read(splitRepositoryProvider).delete(s.id!),
                         )),
 
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => _showAddParticipantSheet(
-                        expenseId: expense.id!, currentSplits: splits),
-                    icon: const Icon(Icons.person_add_rounded, size: 18),
-                    label: const Text('Agregar persona'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 44),
+                  // ── "Tu parte" row ────────────────────────────────────
+                  if (readOnly && !isBalanced && !isOver)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.08),
+                              child: Icon(Icons.person_rounded,
+                                  size: 18,
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.4)),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Tu parte',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ),
+                            Text(
+                              CurrencyFormatter.format(remaining),
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+
+                  // ── Agregar persona (oculto en solo lectura) ──────────
+                  if (!readOnly) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => _showAddParticipantSheet(
+                          expenseId: expense.id!, currentSplits: splits),
+                      icon: const Icon(Icons.person_add_rounded, size: 18),
+                      label: const Text('Agregar persona'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 44),
+                      ),
+                    ),
+                  ],
                 ],
               );
             },
@@ -518,6 +666,7 @@ class _SplitExpenseScreenState extends ConsumerState<SplitExpenseScreen> {
 class _SplitTile extends ConsumerWidget {
   final ExpenseSplit split;
   final List<PaymentMethod> methods;
+  final bool readOnly;
   final Future<void> Function(Rect? origin) onShare;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -525,6 +674,7 @@ class _SplitTile extends ConsumerWidget {
   _SplitTile({
     required this.split,
     required this.methods,
+    required this.readOnly,
     required this.onShare,
     required this.onEdit,
     required this.onDelete,
@@ -623,19 +773,20 @@ class _SplitTile extends ConsumerWidget {
                   ],
                 ),
               ),
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert_rounded,
-                  size: 18,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-              ],
-              onSelected: (v) {
-                if (v == 'edit') onEdit();
-                if (v == 'delete') onDelete();
-              },
-            ),
+            if (!readOnly)
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert_rounded,
+                    size: 18,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                  const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                ],
+                onSelected: (v) {
+                  if (v == 'edit') onEdit();
+                  if (v == 'delete') onDelete();
+                },
+              ),
           ],
         ),
       ),
